@@ -15,6 +15,6 @@
    local (localStorage) engine and keeps working on one device.
    ========================================================================= */
 window.SUPABASE_CONFIG = {
-    url: '',
-    anonKey: ''
+    url: 'https://rbcbcnyokkrryamuvuee.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJiY2Jjbnlva2tycnlhbXV2dWVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4NzQ5OTcsImV4cCI6MjEwMjQ1MDk5N30.zyXcHDGfW5SyXmSqQl5DK77jXylrBeeZcxj3Z2CgjZw'
 };

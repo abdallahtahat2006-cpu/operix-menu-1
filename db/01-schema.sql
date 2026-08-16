@@ -118,6 +118,10 @@ create table if not exists public.settings (
 
     base_url      text not null default '',   -- what the table QR codes point at
 
+    -- Turn on once the tokened QR codes are printed: a guest can then no
+    -- longer open a session by typing ?table=12 from home.
+    qr_required   boolean not null default false,
+
     updated_at    timestamptz not null default now()
 );
 
@@ -192,13 +196,33 @@ create table if not exists public.tables (
     label_ar    text,
     label_en    text,
     seats       smallint not null default 4,
-    qr_token    uuid not null default gen_random_uuid() unique,
     active      boolean not null default true,
     created_at  timestamptz not null default now()
 );
 
-comment on column public.tables.qr_token is
-    'Printed into the QR link so a guessed ?table=12 cannot open a session.';
+-- The QR secret lives in its own table because RLS cannot hide one column:
+-- every guest may read `tables`, but only staff may read the tokens.
+create table if not exists public.table_secrets (
+    table_id  smallint primary key references public.tables (id) on delete cascade,
+    qr_token  uuid not null default gen_random_uuid()
+);
+
+create or replace function public.ensure_table_secret()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+    insert into public.table_secrets (table_id) values (new.id)
+    on conflict (table_id) do nothing;
+    return null;
+end;
+$$;
+
+drop trigger if exists tables_secret on public.tables;
+create trigger tables_secret after insert on public.tables
+    for each row execute function public.ensure_table_secret();
 
 -- =========================================================================
 -- 5. Sessions — one per seating, the spine of a table's life
@@ -214,11 +238,12 @@ create table if not exists public.sessions (
     closed_at   timestamptz
 );
 
--- one live session per table
-create unique index if not exists sessions_one_open_per_table
-    on public.sessions (table_id) where (status = 'open');
-
-create index if not exists sessions_open_idx on public.sessions (status, opened_at desc);
+-- Deliberately NOT unique per table: two friends on two phones at table 12
+-- each get their own session, and the table's bill is the sum of them. A
+-- guest cannot read another guest's session, so sharing one row is impossible
+-- without leaking the whole table.
+create index if not exists sessions_open_idx  on public.sessions (status, opened_at desc);
+create index if not exists sessions_table_idx on public.sessions (table_id, status);
 
 -- =========================================================================
 -- 6. Orders
@@ -421,6 +446,7 @@ create trigger sessions_log after insert on public.sessions
 -- =========================================================================
 -- 10. Row level security
 -- =========================================================================
+alter table public.table_secrets enable row level security;
 alter table public.staff         enable row level security;
 alter table public.settings      enable row level security;
 alter table public.categories    enable row level security;
@@ -482,6 +508,12 @@ create policy tables_read on public.tables
 
 drop policy if exists tables_write on public.tables;
 create policy tables_write on public.tables
+    for all to authenticated
+    using (public.is_staff()) with check (public.is_staff());
+
+-- QR tokens: the dashboard prints them, nobody else ever sees them.
+drop policy if exists secrets_staff on public.table_secrets;
+create policy secrets_staff on public.table_secrets
     for all to authenticated
     using (public.is_staff()) with check (public.is_staff());
 
@@ -632,6 +664,67 @@ alter table public.bills         replica identity default;
 -- =========================================================================
 -- 12. Convenience for the dashboard
 -- =========================================================================
+
+-- Seating a table is the one thing a guest device does that needs checking,
+-- so it goes through a function instead of a raw insert: it validates the
+-- table, enforces the QR token when the owner turns that on, and reuses the
+-- session this device already has instead of opening a second one.
+create or replace function public.open_session(
+    p_table  smallint,
+    p_token  uuid default null,
+    p_guests smallint default 2
+)
+returns public.sessions
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    s            public.sessions;
+    needs_token  boolean;
+begin
+    if auth.uid() is null then
+        raise exception 'Sign in before opening a table';
+    end if;
+
+    if not exists (select 1 from public.tables t where t.id = p_table and t.active) then
+        raise exception 'Unknown table %', p_table;
+    end if;
+
+    select qr_required into needs_token from public.settings where id = 1;
+
+    if coalesce(needs_token, false) and not public.is_staff() then
+        if not exists (
+            select 1 from public.table_secrets ts
+            where ts.table_id = p_table and ts.qr_token = p_token
+        ) then
+            raise exception 'This QR code is not valid for table %', p_table;
+        end if;
+    end if;
+
+    select * into s
+      from public.sessions
+     where table_id = p_table and status = 'open' and created_by = auth.uid()
+     order by opened_at desc
+     limit 1;
+
+    if found then
+        if p_guests is not null and p_guests <> s.guests then
+            update public.sessions set guests = p_guests where id = s.id returning * into s;
+        end if;
+        return s;
+    end if;
+
+    insert into public.sessions (table_id, guests, created_by, opened_by)
+    values (p_table, coalesce(p_guests, 2), auth.uid(),
+            case when public.is_staff() then 'staff' else 'guest' end)
+    returning * into s;
+
+    return s;
+end;
+$$;
+
+grant execute on function public.open_session(smallint, uuid, smallint) to anon, authenticated;
 
 -- Promote an existing auth user to staff by e-mail, so nobody has to copy
 -- UUIDs by hand:  select public.grant_staff('waiter@lumiere.com', 'Ahmad', 'waiter');

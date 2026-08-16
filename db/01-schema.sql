@@ -17,34 +17,11 @@
 
 -- --- helpers -------------------------------------------------------------
 
-create extension if not exists "pgcrypto";
+-- gen_random_uuid() is in core PostgreSQL since 13, so no extension is needed.
 
--- security definer so a policy on `staff` never recurses into itself
-create or replace function public.is_staff()
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-    select exists (
-        select 1 from public.staff s
-        where s.id = auth.uid() and s.active
-    );
-$$;
-
-create or replace function public.is_manager()
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-    select exists (
-        select 1 from public.staff s
-        where s.id = auth.uid() and s.active and s.role = 'manager'
-    );
-$$;
+-- NOTE: is_staff() and is_manager() live further down, right after the staff
+-- table. A `language sql` body is parsed when the function is created, so it
+-- cannot mention a table that does not exist yet.
 
 create or replace function public.touch_updated_at()
 returns trigger
@@ -84,6 +61,34 @@ create table if not exists public.staff (
 
 comment on table public.staff is
     'Whoever may open the floor console and the dashboard. One row per auth user.';
+
+-- Every policy below asks these two questions. `security definer` keeps a
+-- policy on `staff` from recursing into itself.
+create or replace function public.is_staff()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+    select exists (
+        select 1 from public.staff s
+        where s.id = auth.uid() and s.active
+    );
+$$;
+
+create or replace function public.is_manager()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+    select exists (
+        select 1 from public.staff s
+        where s.id = auth.uid() and s.active and s.role = 'manager'
+    );
+$$;
 
 -- =========================================================================
 -- 2. Restaurant settings — exactly one row
@@ -753,8 +758,11 @@ $$;
 
 revoke all on function public.grant_staff(text, text, text) from public, anon, authenticated;
 
--- Today's numbers for the dashboard's overview cards.
-create or replace view public.v_today_stats as
+-- Today's numbers for the dashboard's overview cards. security_invoker keeps
+-- the view honest: it reads through the caller's RLS, so only staff see real
+-- totals instead of the view owner's unrestricted view of every order.
+create or replace view public.v_today_stats
+with (security_invoker = true) as
     select
         count(*) filter (where o.status <> 'rejected')                    as orders_today,
         coalesce(sum(o.total) filter (where o.status <> 'rejected'), 0)   as revenue_today,

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0A0908">
+    <meta name="description" content="Operix floor console — waiter and cashier system: live table calls, order tickets and payments.">
+    <title>Floor console · Lumière</title>
+
+    <!-- Restore theme and language before first paint (console defaults to Arabic) -->
+    <script>
+        (function () {
+            try {
+                var theme = JSON.parse(localStorage.getItem('lum.theme')) || 'dark';
+                var lang = JSON.parse(localStorage.getItem('lum.lang')) || 'ar';
+                var root = document.documentElement;
+                root.dataset.theme = theme;
+                root.lang = lang;
+                root.dir = lang === 'ar' ? 'rtl' : 'ltr';
+            } catch (e) { /* markup defaults apply */ }
+        })();
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="console.css">
+</head>
+<body class="console page-staff">
+
+    <div class="grain" aria-hidden="true"></div>
+
+    <div class="c-shell">
+
+        <header class="c-bar">
+            <div class="c-brand">
+                <span class="c-brand__name" id="brandName">Lumière</span>
+                <span class="c-brand__role" data-ops="staffTitle"></span>
+            </div>
+
+            <span class="livedot" id="liveDot"><i></i><span data-ops="live"></span></span>
+
+            <span class="c-bar__spacer"></span>
+
+            <span class="c-clock" id="clock"></span>
+            <button class="c-btn c-btn--icon" id="demoBtn" type="button" data-ops-label="demo" title="Demo event"></button>
+            <button class="c-btn c-btn--icon" id="soundBtn" type="button"></button>
+            <button class="c-btn c-btn--icon" id="langBtn" type="button">EN</button>
+            <button class="c-btn c-btn--icon" id="themeBtn" type="button"></button>
+            <a class="c-btn c-btn--icon" href="admin.html" data-ops-label="openAdmin" title="Dashboard"><span data-ic="sliders"></span></a>
+        </header>
+
+        <main class="c-main">
+            <nav class="seg" id="seg" aria-label="Sections"></nav>
+            <section id="view" style="margin-top:1rem"></section>
+        </main>
+
+    </div>
+
+    <!-- Ticket editor / table sheet -->
+    <div class="cmodal" id="modal" role="dialog" aria-modal="true">
+        <div class="cmodal__card">
+            <div class="cmodal__head">
+                <h2 class="cmodal__title"></h2>
+                <button class="icon-mini modal-close" type="button" aria-label="Close"><span data-ic="x"></span></button>
+            </div>
+            <div class="cmodal__body"></div>
+            <div class="cmodal__foot"></div>
+        </div>
+    </div>
+
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+
+    <script src="icons.js"></script>
+    <script src="data.js"></script>
+    <script src="system.js"></script>
+    <script src="console-core.js"></script>
+    <script src="staff.js"></script>
+</body>
+</html>

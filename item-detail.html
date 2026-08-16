@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0C0A09">
+    <meta name="description" content="Ingredients, allergens and pairings for every dish at Lumière.">
+    <title>Dish · Lumière</title>
+
+    <script>
+        (function () {
+            try {
+                var theme = JSON.parse(localStorage.getItem('lum.theme')) || 'dark';
+                var lang = JSON.parse(localStorage.getItem('lum.lang')) || 'en';
+                var root = document.documentElement;
+                root.dataset.theme = theme;
+                root.lang = lang;
+                root.dir = lang === 'ar' ? 'rtl' : 'ltr';
+            } catch (e) { /* defaults in the markup already apply */ }
+        })();
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="page-detail">
+
+    <div class="grain" aria-hidden="true"></div>
+
+    <header class="topbar topbar--float">
+        <div class="topbar__inner">
+            <a class="icon-btn nav-back" href="menu.html" data-i18n-label="backToMenu">
+                <span data-ic="arrowLeft"></span>
+            </a>
+
+            <span class="topbar__spacer"></span>
+
+            <button class="icon-btn" id="detailFav" type="button" aria-label="Favourite">
+                <span data-ic="heart"></span>
+            </button>
+            <button class="icon-btn icon-btn--lang" id="langBtn" type="button">ع</button>
+            <button class="icon-btn" id="themeBtn" type="button"></button>
+            <button class="icon-btn cart-btn" id="cartBtn" type="button" data-i18n-label="yourOrder">
+                <span data-ic="basket"></span>
+                <span class="cart-btn__badge" id="cartBadge">0</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Rendered from the dish id in the query string -->
+    <main id="detailRoot"></main>
+
+    <!-- Sticky order bar -->
+    <div class="order-bar" id="orderBar">
+        <div class="order-bar__inner">
+            <div class="stepper">
+                <button id="qtyMinus" type="button" aria-label="Decrease quantity"><span data-ic="minus"></span></button>
+                <span class="stepper__value" id="qtyValue">1</span>
+                <button id="qtyPlus" type="button" aria-label="Increase quantity"><span data-ic="plus"></span></button>
+            </div>
+            <button class="btn btn--gold" id="addBtn" type="button" style="flex:1">
+                <span data-i18n="addToOrder"></span>
+                <span aria-hidden="true">·</span>
+                <span id="addPrice"></span>
+            </button>
+        </div>
+    </div>
+
+    <script src="icons.js"></script>
+    <script src="data.js"></script>
+    <script src="system.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

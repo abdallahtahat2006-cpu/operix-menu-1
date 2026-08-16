@@ -1,0 +1,1651 @@
+/* =========================================================================
+   Operix Restaurant System — console layer
+   The floor console (staff.html) and the dashboard (admin.html).
+
+   These two are the back of house, so they inherit every token from
+   style.css — same espresso base, same gold, same fonts — but trade the
+   guest's generous spacing for density: a waiter reads this from two metres
+   away while carrying plates, and an owner edits fifty dishes in it.
+
+   Loaded AFTER style.css. Nothing here restyles a guest-facing class.
+   ========================================================================= */
+
+/* -------------------------------------------------------------------------
+   1. Extra tokens — operational status colours
+   ---------------------------------------------------------------------- */
+:root,
+[data-theme='dark'] {
+    --ok: #79A86B;
+    --ok-dim: rgba(121, 168, 107, 0.14);
+    --warn: #E0A33F;
+    --warn-dim: rgba(224, 163, 63, 0.14);
+    --hot: #D9613A;
+    --hot-dim: rgba(217, 97, 58, 0.16);
+    --cool: #6E93B8;
+    --cool-dim: rgba(110, 147, 184, 0.14);
+    --console-bg: #0A0908;
+}
+
+[data-theme='light'] {
+    --ok: #4C7A40;
+    --ok-dim: rgba(76, 122, 64, 0.12);
+    --warn: #A97514;
+    --warn-dim: rgba(169, 117, 20, 0.13);
+    --hot: #B4451F;
+    --hot-dim: rgba(180, 69, 31, 0.12);
+    --cool: #3D6285;
+    --cool-dim: rgba(61, 98, 133, 0.12);
+    --console-bg: #F3ECE0;
+}
+
+body.console {
+    background-color: var(--console-bg);
+    min-height: 100svh;
+}
+
+/* -------------------------------------------------------------------------
+   2. Shell
+   ---------------------------------------------------------------------- */
+.c-shell {
+    position: relative;
+    z-index: 2;
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+}
+
+.c-bar {
+    position: sticky;
+    top: 0;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.7rem clamp(0.9rem, 2.5vw, 1.5rem);
+    background: var(--glass);
+    backdrop-filter: blur(18px) saturate(160%);
+    -webkit-backdrop-filter: blur(18px) saturate(160%);
+    border-bottom: 1px solid var(--line);
+}
+
+.c-brand {
+    display: flex;
+    align-items: baseline;
+    gap: 0.55rem;
+    min-width: 0;
+}
+
+.c-brand__name {
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.c-brand__role {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--gold-ink);
+    white-space: nowrap;
+}
+
+[dir='rtl'] .c-brand__role {
+    letter-spacing: 0;
+}
+
+.c-bar__spacer {
+    flex: 1;
+}
+
+/* Live pill — green while the bus is flowing */
+.livedot {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 50px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--ok);
+    background: var(--ok-dim);
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+
+.livedot i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: livepulse 2s var(--ease-out) infinite;
+}
+
+@keyframes livepulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.35; transform: scale(0.82); }
+}
+
+.c-clock {
+    font-variant-numeric: tabular-nums;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-2);
+    white-space: nowrap;
+}
+
+/* Small square chrome buttons, tighter than the guest's .icon-btn */
+.c-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    height: 38px;
+    min-width: 38px;
+    padding-inline: 0.7rem;
+    border-radius: 11px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-2);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    transition: color var(--t-fast) ease, border-color var(--t-fast) ease, background var(--t-fast) ease;
+}
+
+.c-btn:hover {
+    color: var(--text);
+    border-color: var(--line-2);
+}
+
+.c-btn--icon {
+    padding-inline: 0;
+}
+
+.c-btn--gold {
+    color: #1A1410;
+    background: linear-gradient(180deg, var(--gold) 0%, #C9963F 100%);
+    border-color: transparent;
+}
+
+.c-btn--gold:hover {
+    color: #1A1410;
+    filter: brightness(1.06);
+}
+
+.c-btn.on {
+    color: var(--gold-ink);
+    background: var(--gold-dim);
+    border-color: var(--line-2);
+}
+
+/* A waiter's phone is the smallest this has to work on: the bar keeps the
+   brand, the live dot and the controls, and drops every label. */
+@media (max-width: 640px) {
+    .c-bar {
+        flex-wrap: wrap;
+        row-gap: 0.45rem;
+        padding-inline: 0.8rem;
+        gap: 0.5rem;
+    }
+
+    .c-brand {
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    .c-brand__name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .c-brand__role,
+    .c-clock,
+    .livedot span {
+        display: none;
+    }
+
+    .livedot {
+        padding-inline: 0.5rem;
+    }
+
+    .c-bar .c-btn > span:not(.ic) {
+        display: none;
+    }
+
+    .c-bar .c-btn {
+        padding-inline: 0;
+        min-width: 38px;
+    }
+}
+
+.c-main {
+    flex: 1;
+    padding: clamp(0.9rem, 2.5vw, 1.5rem);
+    padding-bottom: 4rem;
+    width: 100%;
+    max-width: 1500px;
+    margin-inline: auto;
+}
+
+/* -------------------------------------------------------------------------
+   3. Segmented tabs (floor console)
+   ---------------------------------------------------------------------- */
+.seg {
+    display: flex;
+    gap: 0.3rem;
+    padding: 0.3rem;
+    border-radius: 14px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.seg::-webkit-scrollbar {
+    display: none;
+}
+
+.seg__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.5rem 0.95rem;
+    border-radius: 10px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-2);
+    white-space: nowrap;
+    transition: background var(--t-fast) ease, color var(--t-fast) ease;
+}
+
+.seg__btn .ic {
+    font-size: 1.05em;
+}
+
+.seg__btn:hover {
+    color: var(--text);
+}
+
+.seg__btn.active {
+    color: var(--gold-ink);
+    background: var(--gold-dim);
+}
+
+.seg__count {
+    min-width: 20px;
+    padding: 0 0.35rem;
+    border-radius: 50px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 20px;
+    text-align: center;
+    color: var(--text-3);
+    background: var(--surface-3);
+}
+
+.seg__btn.active .seg__count {
+    color: #1A1410;
+    background: var(--gold);
+}
+
+.seg__count.hot {
+    color: #fff;
+    background: var(--hot);
+    animation: badgepop 0.4s var(--ease-spring);
+}
+
+@keyframes badgepop {
+    from { transform: scale(0.5); }
+    to { transform: scale(1); }
+}
+
+/* -------------------------------------------------------------------------
+   4. Panels + generic bits
+   ---------------------------------------------------------------------- */
+.panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+}
+
+.panel + .panel {
+    margin-top: 1rem;
+}
+
+.panel__head {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.9rem 1.1rem;
+    border-bottom: 1px solid var(--line);
+}
+
+.panel__title {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.panel__sub {
+    font-size: 0.8rem;
+    color: var(--text-3);
+}
+
+.panel__body {
+    padding: 1.1rem;
+}
+
+.panel__body--flush {
+    padding: 0;
+}
+
+.c-title {
+    font-family: var(--font-display);
+    font-size: clamp(1.6rem, 4vw, 2.1rem);
+    font-weight: 600;
+    line-height: 1.15;
+}
+
+.c-sub {
+    font-size: 0.85rem;
+    color: var(--text-3);
+    margin-top: 0.15rem;
+}
+
+.c-head {
+    display: flex;
+    align-items: flex-end;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+}
+
+.c-head__actions {
+    margin-inline-start: auto;
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.c-empty {
+    display: grid;
+    place-items: center;
+    gap: 0.55rem;
+    padding: 2.6rem 1rem;
+    text-align: center;
+    color: var(--text-3);
+    font-size: 0.88rem;
+}
+
+.c-empty .ic {
+    font-size: 1.6rem;
+    color: var(--line-2);
+}
+
+.muted {
+    color: var(--text-3);
+}
+
+.tabular {
+    font-variant-numeric: tabular-nums;
+}
+
+/* -------------------------------------------------------------------------
+   5. Order board
+   ---------------------------------------------------------------------- */
+.board {
+    display: grid;
+    gap: 0.9rem;
+    grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+    align-items: start;
+}
+
+.col {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    padding: 0.75rem;
+    min-height: 140px;
+}
+
+.col__head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.15rem 0.35rem 0.7rem;
+}
+
+.col__dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--tone, var(--gold));
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--tone, var(--gold)) 18%, transparent);
+}
+
+.col__name {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-2);
+}
+
+[dir='rtl'] .col__name {
+    letter-spacing: 0;
+}
+
+.col__count {
+    margin-inline-start: auto;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-3);
+}
+
+.col__list {
+    display: grid;
+    gap: 0.65rem;
+}
+
+/* --- Ticket ------------------------------------------------------------ */
+.tk {
+    position: relative;
+    border-radius: var(--r-md);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    padding: 0.85rem;
+    box-shadow: var(--shadow-1);
+    animation: tkin 0.45s var(--ease-out) both;
+}
+
+@keyframes tkin {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: none; }
+}
+
+/* The left rail carries the ticket's state colour */
+.tk::before {
+    content: '';
+    position: absolute;
+    inset-block: 0.75rem;
+    inset-inline-start: 0;
+    width: 3px;
+    border-radius: 3px;
+    background: var(--tone, var(--gold));
+}
+
+.tk--fresh {
+    border-color: color-mix(in srgb, var(--hot) 45%, var(--line));
+    animation: tkin 0.45s var(--ease-out) both, tkflash 1.6s var(--ease-out) 2;
+}
+
+@keyframes tkflash {
+    0%, 100% { box-shadow: var(--shadow-1); }
+    50% { box-shadow: 0 0 0 3px var(--hot-dim); }
+}
+
+.tk__head {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    margin-bottom: 0.6rem;
+}
+
+.tk__table {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.3rem;
+    padding: 0.28rem 0.6rem;
+    border-radius: 9px;
+    background: var(--gold-dim);
+    color: var(--gold-ink);
+    font-weight: 700;
+    font-size: 0.8rem;
+}
+
+.tk__table b {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    line-height: 1;
+}
+
+.tk__code {
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--text-3);
+    letter-spacing: 0.06em;
+}
+
+.tk__age {
+    margin-inline-start: auto;
+    font-size: 0.74rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-3);
+    white-space: nowrap;
+}
+
+.tk__age.late {
+    color: var(--hot);
+    font-weight: 700;
+}
+
+.tk__lines {
+    list-style: none;
+    display: grid;
+    gap: 0.4rem;
+    padding: 0.6rem 0;
+    border-top: 1px dashed var(--line);
+    border-bottom: 1px dashed var(--line);
+}
+
+.tk__lines li {
+    display: flex;
+    gap: 0.55rem;
+    align-items: flex-start;
+    font-size: 0.88rem;
+    line-height: 1.35;
+}
+
+.tk__qty {
+    min-width: 26px;
+    height: 22px;
+    border-radius: 7px;
+    display: grid;
+    place-items: center;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--gold-ink);
+    background: var(--gold-dimmer);
+    border: 1px solid var(--line);
+    flex-shrink: 0;
+}
+
+.tk__opts {
+    display: block;
+    font-size: 0.76rem;
+    font-style: normal;
+    color: var(--text-3);
+}
+
+.tk__price {
+    margin-inline-start: auto;
+    font-size: 0.82rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-2);
+    white-space: nowrap;
+}
+
+.tk__note {
+    display: flex;
+    gap: 0.45rem;
+    align-items: flex-start;
+    margin-top: 0.6rem;
+    padding: 0.5rem 0.6rem;
+    border-radius: 10px;
+    font-size: 0.8rem;
+    color: var(--warn);
+    background: var(--warn-dim);
+}
+
+.tk__foot {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.7rem;
+}
+
+.tk__total {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.tk__actions {
+    margin-inline-start: auto;
+    display: flex;
+    gap: 0.4rem;
+}
+
+.tk__state {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: var(--tone, var(--gold));
+    margin-top: 0.55rem;
+}
+
+/* -------------------------------------------------------------------------
+   6. Alerts (waiter calls + payment requests)
+   ---------------------------------------------------------------------- */
+.alerts {
+    display: grid;
+    gap: 0.7rem;
+}
+
+.alert {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    padding: 0.9rem 1rem;
+    border-radius: var(--r-md);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-inline-start: 3px solid var(--tone, var(--gold));
+    animation: tkin 0.4s var(--ease-out) both;
+}
+
+.alert__icon {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 13px;
+    font-size: 1.2rem;
+    color: var(--tone, var(--gold));
+    background: color-mix(in srgb, var(--tone, var(--gold)) 14%, transparent);
+    flex-shrink: 0;
+}
+
+.alert--live .alert__icon {
+    animation: livepulse 1.6s var(--ease-out) infinite;
+}
+
+.alert__body {
+    min-width: 0;
+    flex: 1;
+}
+
+.alert__title {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.alert__title b {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    color: var(--gold-ink);
+}
+
+.alert__sub {
+    font-size: 0.78rem;
+    color: var(--text-3);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.alert__age {
+    font-variant-numeric: tabular-nums;
+}
+
+.alert__age.late {
+    color: var(--hot);
+    font-weight: 700;
+}
+
+/* -------------------------------------------------------------------------
+   7. Tables grid
+   ---------------------------------------------------------------------- */
+.tables {
+    display: grid;
+    gap: 0.7rem;
+    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+}
+
+.tcard {
+    position: relative;
+    display: grid;
+    gap: 0.2rem;
+    padding: 0.9rem 0.7rem;
+    border-radius: var(--r-md);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    text-align: center;
+    transition: transform var(--t-fast) var(--ease-spring), border-color var(--t-fast) ease;
+}
+
+.tcard:hover {
+    transform: translateY(-2px);
+    border-color: var(--line-2);
+}
+
+.tcard__num {
+    font-family: var(--font-display);
+    font-size: 2rem;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.tcard__state {
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: var(--tone, var(--text-3));
+}
+
+.tcard__meta {
+    font-size: 0.7rem;
+    color: var(--text-3);
+    min-height: 1em;
+}
+
+.tcard[data-state='free'] {
+    opacity: 0.62;
+}
+
+.tcard[data-state='calling'],
+.tcard[data-state='bill'] {
+    border-color: color-mix(in srgb, var(--tone) 45%, var(--line));
+    background: color-mix(in srgb, var(--tone) 7%, var(--surface));
+}
+
+.tcard__flag {
+    position: absolute;
+    top: 0.5rem;
+    inset-inline-end: 0.5rem;
+    font-size: 0.9rem;
+    color: var(--tone);
+}
+
+/* -------------------------------------------------------------------------
+   8. Dashboard layout
+   ---------------------------------------------------------------------- */
+.c-body {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 232px minmax(0, 1fr);
+    align-items: start;
+}
+
+.c-nav {
+    position: sticky;
+    top: 55px;
+    display: grid;
+    gap: 0.2rem;
+    align-content: start;
+    padding: 1rem 0.7rem;
+    border-inline-end: 1px solid var(--line);
+    min-height: calc(100svh - 55px);
+}
+
+.c-nav__btn {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.65rem 0.8rem;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-2);
+    text-align: start;
+    transition: background var(--t-fast) ease, color var(--t-fast) ease;
+}
+
+.c-nav__btn .ic {
+    font-size: 1.1em;
+    color: var(--text-3);
+}
+
+.c-nav__btn:hover {
+    color: var(--text);
+    background: var(--surface);
+}
+
+.c-nav__btn.active {
+    color: var(--gold-ink);
+    background: var(--gold-dim);
+}
+
+.c-nav__btn.active .ic {
+    color: var(--gold);
+}
+
+.c-pane {
+    padding: clamp(0.9rem, 2.5vw, 1.6rem);
+    max-width: 1100px;
+}
+
+@media (max-width: 860px) {
+    .c-body {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .c-nav {
+        position: sticky;
+        top: 55px;
+        z-index: 50;
+        min-height: 0;
+        grid-auto-flow: column;
+        grid-auto-columns: max-content;
+        overflow-x: auto;
+        padding: 0.6rem 0.7rem;
+        border-inline-end: none;
+        border-bottom: 1px solid var(--line);
+        background: var(--console-bg);
+        scrollbar-width: none;
+    }
+
+    .c-nav::-webkit-scrollbar {
+        display: none;
+    }
+
+    .c-nav__btn {
+        white-space: nowrap;
+    }
+}
+
+/* -------------------------------------------------------------------------
+   9. KPI cards + activity
+   ---------------------------------------------------------------------- */
+.kpis {
+    display: grid;
+    gap: 0.8rem;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    margin-bottom: 1.2rem;
+}
+
+.kpi {
+    padding: 1rem 1.1rem;
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    border: 1px solid var(--line);
+}
+
+.kpi__label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+}
+
+[dir='rtl'] .kpi__label {
+    letter-spacing: 0;
+}
+
+.kpi__label .ic {
+    color: var(--gold);
+}
+
+.kpi__value {
+    font-family: var(--font-display);
+    font-size: 2.1rem;
+    font-weight: 600;
+    line-height: 1.15;
+    margin-top: 0.3rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.rank {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 1.1rem;
+}
+
+.rank + .rank {
+    border-top: 1px solid var(--line);
+}
+
+.rank__no {
+    width: 24px;
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    color: var(--gold-ink);
+}
+
+.rank__bar {
+    flex: 1;
+    height: 6px;
+    border-radius: 4px;
+    background: var(--surface-3);
+    overflow: hidden;
+}
+
+.rank__bar i {
+    display: block;
+    height: 100%;
+    border-radius: 4px;
+    background: linear-gradient(90deg, var(--gold), var(--ember));
+}
+
+.rank__n {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-2);
+    min-width: 2ch;
+    text-align: end;
+}
+
+.feed {
+    display: grid;
+}
+
+.feed__row {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.65rem 1.1rem;
+    font-size: 0.85rem;
+}
+
+.feed__row + .feed__row {
+    border-top: 1px solid var(--line);
+}
+
+.feed__ic {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    color: var(--tone, var(--gold));
+    background: color-mix(in srgb, var(--tone, var(--gold)) 13%, transparent);
+    flex-shrink: 0;
+}
+
+.feed__time {
+    margin-inline-start: auto;
+    font-size: 0.74rem;
+    color: var(--text-3);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* -------------------------------------------------------------------------
+   10. Editor rows (menu manager)
+   ---------------------------------------------------------------------- */
+.erow {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    padding: 0.7rem 1.1rem;
+}
+
+.erow + .erow {
+    border-top: 1px solid var(--line);
+}
+
+.erow--off .erow__name,
+.erow--off .erow__price {
+    opacity: 0.45;
+    text-decoration: line-through;
+}
+
+.erow__plate {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background: #fff;
+    flex-shrink: 0;
+    overflow: hidden;
+    box-shadow: var(--plate-shadow);
+}
+
+.erow__plate img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.erow__body {
+    min-width: 0;
+    flex: 1;
+}
+
+.erow__name {
+    font-weight: 600;
+    font-size: 0.95rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.erow__meta {
+    font-size: 0.75rem;
+    color: var(--text-3);
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.erow__price {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.erow__tools {
+    display: flex;
+    gap: 0.3rem;
+    align-items: center;
+}
+
+.icon-mini {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    color: var(--text-3);
+    border: 1px solid transparent;
+    transition: color var(--t-fast) ease, background var(--t-fast) ease;
+}
+
+.icon-mini:hover {
+    color: var(--text);
+    background: var(--surface-2);
+}
+
+.icon-mini--danger:hover {
+    color: var(--hot);
+    background: var(--hot-dim);
+}
+
+/* On a phone the six per-dish controls would squeeze the name to nothing,
+   so they drop to their own line under it. */
+@media (max-width: 640px) {
+    .erow {
+        flex-wrap: wrap;
+        row-gap: 0.5rem;
+    }
+
+    /* Narrow enough that a single control — the order pad's stepper — still
+       shares the line, while the admin row's whole tool group still wraps. */
+    .erow__body {
+        flex: 1 1 6rem;
+    }
+
+    .erow__tools {
+        flex: 1 0 100%;
+        justify-content: flex-end;
+    }
+}
+
+.cat-head {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.7rem 1.1rem;
+    background: var(--surface-2);
+    border-top: 1px solid var(--line);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-2);
+}
+
+[dir='rtl'] .cat-head {
+    letter-spacing: 0;
+}
+
+.cat-head:first-child {
+    border-top: none;
+}
+
+.cat-head__count {
+    margin-inline-start: auto;
+    color: var(--text-3);
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+/* -------------------------------------------------------------------------
+   11. Forms
+   ---------------------------------------------------------------------- */
+.form-grid {
+    display: grid;
+    gap: 0.9rem;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.form-grid .field {
+    margin-top: 0;
+}
+
+.field--wide {
+    grid-column: 1 / -1;
+}
+
+textarea.field__input {
+    min-height: 84px;
+    resize: vertical;
+    font-family: inherit;
+}
+
+select.field__input {
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+                      linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-position: calc(100% - 20px) 55%, calc(100% - 15px) 55%;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+    padding-inline-end: 2.4rem;
+}
+
+[dir='rtl'] select.field__input {
+    background-position: 15px 55%, 20px 55%;
+    background-image: linear-gradient(135deg, transparent 50%, currentColor 50%),
+                      linear-gradient(45deg, currentColor 50%, transparent 50%);
+    padding-inline-end: 1rem;
+    padding-inline-start: 2.4rem;
+}
+
+/* Switch row — the dashboard's main verb */
+.srow {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    padding: 0.85rem 1.1rem;
+    cursor: pointer;
+}
+
+.srow + .srow {
+    border-top: 1px solid var(--line);
+}
+
+.srow__ic {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    color: var(--gold);
+    background: var(--gold-dimmer);
+    flex-shrink: 0;
+}
+
+.srow__body {
+    flex: 1;
+    min-width: 0;
+}
+
+.srow__name {
+    font-weight: 600;
+    font-size: 0.92rem;
+}
+
+.srow__sub {
+    font-size: 0.76rem;
+    color: var(--text-3);
+}
+
+.switch {
+    position: relative;
+    width: 46px;
+    height: 27px;
+    border-radius: 50px;
+    background: var(--surface-3);
+    border: 1px solid var(--line);
+    flex-shrink: 0;
+    transition: background var(--t-fast) ease;
+}
+
+.switch::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    inset-inline-start: 2px;
+    width: 21px;
+    height: 21px;
+    border-radius: 50%;
+    background: var(--text-3);
+    transition: transform var(--t-mid) var(--ease-spring), background var(--t-fast) ease;
+}
+
+.switch.on {
+    background: var(--gold-dim);
+    border-color: var(--line-2);
+}
+
+.switch.on::after {
+    background: var(--gold);
+    transform: translateX(19px);
+}
+
+[dir='rtl'] .switch.on::after {
+    transform: translateX(-19px);
+}
+
+/* Big radio cards — order flow */
+.choice {
+    display: flex;
+    gap: 0.8rem;
+    align-items: flex-start;
+    padding: 1rem;
+    border-radius: var(--r-md);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    text-align: start;
+    width: 100%;
+    transition: border-color var(--t-fast) ease, background var(--t-fast) ease;
+}
+
+.choice + .choice {
+    margin-top: 0.6rem;
+}
+
+.choice.on {
+    border-color: var(--line-2);
+    background: var(--gold-dimmer);
+}
+
+.choice__mark {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 1.5px solid var(--line-2);
+    color: var(--gold);
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+}
+
+.choice.on .choice__mark {
+    background: var(--gold-dim);
+}
+
+.choice__name {
+    font-weight: 700;
+    font-size: 0.95rem;
+}
+
+.choice__sub {
+    font-size: 0.8rem;
+    color: var(--text-3);
+}
+
+/* Tag / badge toggles */
+.tagpick {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.tagpick button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.75rem;
+    border-radius: 50px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-3);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    transition: color var(--t-fast) ease, background var(--t-fast) ease;
+}
+
+.tagpick button.on {
+    color: var(--gold-ink);
+    background: var(--gold-dim);
+    border-color: var(--line-2);
+}
+
+/* Photo picker */
+.pics {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.pic {
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: #fff;
+    border: 2px solid transparent;
+    box-shadow: var(--plate-shadow);
+}
+
+.pic.on {
+    border-color: var(--gold);
+}
+
+.pic img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.pic--upload {
+    display: grid;
+    place-items: center;
+    background: var(--surface-2);
+    border: 1px dashed var(--line-2);
+    color: var(--gold);
+    box-shadow: none;
+}
+
+/* -------------------------------------------------------------------------
+   12. QR cards
+   ---------------------------------------------------------------------- */
+.qr-grid {
+    display: grid;
+    gap: 0.8rem;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+
+.qr-card {
+    display: grid;
+    gap: 0.5rem;
+    justify-items: center;
+    padding: 1rem 0.8rem;
+    border-radius: var(--r-md);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    text-align: center;
+}
+
+.qr-card__code {
+    width: 130px;
+    height: 130px;
+    display: grid;
+    place-items: center;
+    padding: 8px;
+    border-radius: 14px;
+    background: #fff;
+}
+
+.qr-card__code svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.qr-card__fallback {
+    display: grid;
+    place-items: center;
+    gap: 0.2rem;
+    color: #7a6a55;
+    font-size: 0.62rem;
+    line-height: 1.3;
+    padding: 0.4rem;
+    word-break: break-all;
+}
+
+.qr-card__fallback .ic {
+    font-size: 1.8rem;
+}
+
+.qr-card__label {
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.qr-card__url {
+    font-size: 0.66rem;
+    color: var(--text-3);
+    word-break: break-all;
+    line-height: 1.35;
+}
+
+.qr-card__tools {
+    display: flex;
+    gap: 0.35rem;
+}
+
+/* -------------------------------------------------------------------------
+   13. Console modal (dish editor, ticket editor)
+   ---------------------------------------------------------------------- */
+.cmodal {
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    background: rgba(6, 4, 3, 0.8);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--t-mid) ease;
+}
+
+.cmodal.show {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.cmodal__card {
+    width: min(640px, 100%);
+    max-height: 92svh;
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--r-xl);
+    background: var(--bg-2);
+    border: 1px solid var(--line-2);
+    box-shadow: var(--shadow-3);
+    transform: translateY(14px) scale(0.98);
+    transition: transform 0.4s var(--ease-out);
+    overflow: hidden;
+}
+
+.cmodal.show .cmodal__card {
+    transform: none;
+}
+
+.cmodal__head {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 1rem 1.2rem;
+    border-bottom: 1px solid var(--line);
+}
+
+.cmodal__title {
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    font-weight: 600;
+    flex: 1;
+}
+
+.cmodal__body {
+    padding: 1.2rem;
+    overflow-y: auto;
+}
+
+.cmodal__foot {
+    display: flex;
+    gap: 0.6rem;
+    padding: 1rem 1.2rem;
+    border-top: 1px solid var(--line);
+    background: var(--surface);
+}
+
+.cmodal__foot .btn {
+    flex: 1;
+}
+
+/* Ticket line editor inside the modal */
+.edit-line {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.6rem 0;
+}
+
+.edit-line + .edit-line {
+    border-top: 1px solid var(--line);
+}
+
+.edit-line__name {
+    flex: 1;
+    font-size: 0.9rem;
+}
+
+.edit-line.gone {
+    opacity: 0.4;
+}
+
+.edit-line.gone .edit-line__name {
+    text-decoration: line-through;
+}
+
+/* -------------------------------------------------------------------------
+   14. Hub (system.html)
+   ---------------------------------------------------------------------- */
+.hub {
+    min-height: 100svh;
+    display: grid;
+    place-items: center;
+    padding: 2rem 1.2rem;
+    position: relative;
+    z-index: 2;
+}
+
+.hub__inner {
+    width: 100%;
+    max-width: 940px;
+    text-align: center;
+}
+
+.hub__eyebrow {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+    color: var(--gold-ink);
+}
+
+[dir='rtl'] .hub__eyebrow {
+    letter-spacing: 0;
+}
+
+.hub__title {
+    font-family: var(--font-display);
+    font-size: clamp(2.4rem, 8vw, 4rem);
+    font-weight: 600;
+    line-height: 1.05;
+    margin: 0.4rem 0 0.5rem;
+}
+
+.hub__sub {
+    color: var(--text-2);
+    max-width: 56ch;
+    margin: 0 auto 2.4rem;
+    font-size: 0.95rem;
+}
+
+.hub__grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    text-align: start;
+}
+
+.hub-card {
+    display: grid;
+    gap: 0.5rem;
+    align-content: start;
+    padding: 1.6rem 1.4rem;
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-2);
+    transition: transform var(--t-mid) var(--ease-spring), border-color var(--t-fast) ease;
+}
+
+.hub-card:hover {
+    transform: translateY(-4px);
+    border-color: var(--line-2);
+}
+
+.hub-card__ic {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    font-size: 1.3rem;
+    color: var(--gold);
+    background: var(--gold-dim);
+    margin-bottom: 0.4rem;
+}
+
+.hub-card__name {
+    font-family: var(--font-display);
+    font-size: 1.6rem;
+    font-weight: 600;
+    line-height: 1.1;
+}
+
+.hub-card__sub {
+    font-size: 0.85rem;
+    color: var(--text-3);
+    line-height: 1.55;
+}
+
+.hub-card__go {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.5rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--gold-ink);
+}
+
+[dir='rtl'] .hub-card__go .ic,
+[dir='rtl'] .nav-arrow {
+    transform: scaleX(-1);
+}
+
+.hub__foot {
+    margin-top: 2.4rem;
+    font-size: 0.78rem;
+    color: var(--text-3);
+}
+
+/* -------------------------------------------------------------------------
+   15. Print — QR sheet only
+   ---------------------------------------------------------------------- */
+@media print {
+    body.console {
+        background: #fff;
+        color: #000;
+    }
+
+    .c-bar,
+    .c-nav,
+    .grain,
+    .c-head__actions,
+    .no-print {
+        display: none !important;
+    }
+
+    .qr-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12mm;
+    }
+
+    .qr-card {
+        border: 1px solid #ddd;
+        background: #fff;
+        break-inside: avoid;
+    }
+
+    .qr-card__label,
+    .qr-card__url {
+        color: #000;
+    }
+
+    .qr-card__tools {
+        display: none;
+    }
+}

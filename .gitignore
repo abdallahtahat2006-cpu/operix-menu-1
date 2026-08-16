@@ -1,0 +1,14 @@
+# OS / editors
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Node (only the optional preview server and the seed generator use it)
+node_modules/
+npm-debug.log*
+*.log
+
+# Local Supabase CLI, if it ever lands here
+.supabase/

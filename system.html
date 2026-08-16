@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0A0908">
+    <meta name="description" content="Operix Restaurant System — the guest menu, the floor console and the dashboard, on one backend.">
+    <title>Operix Restaurant System</title>
+
+    <script>
+        (function () {
+            try {
+                var theme = JSON.parse(localStorage.getItem('lum.theme')) || 'dark';
+                var lang = JSON.parse(localStorage.getItem('lum.lang')) || 'ar';
+                var root = document.documentElement;
+                root.dataset.theme = theme;
+                root.lang = lang;
+                root.dir = lang === 'ar' ? 'rtl' : 'ltr';
+            } catch (e) { /* markup defaults apply */ }
+        })();
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="console.css">
+</head>
+<body class="console">
+
+    <div class="grain" aria-hidden="true"></div>
+
+    <section class="hub">
+        <div class="hub__inner">
+            <span class="hub__eyebrow">Operix Restaurant System</span>
+            <h1 class="hub__title" id="hubTitle">Lumière</h1>
+            <p class="hub__sub" id="hubSub"></p>
+
+            <div class="hub__grid">
+
+                <a class="hub-card" href="index.html">
+                    <span class="hub-card__ic"><span data-ic="phone"></span></span>
+                    <span class="hub-card__name" data-h="menuName"></span>
+                    <span class="hub-card__sub" data-h="menuSub"></span>
+                    <span class="hub-card__go" data-h="open"><span data-ic="arrowLeft" data-ic-class="nav-arrow"></span></span>
+                </a>
+
+                <a class="hub-card" href="staff.html">
+                    <span class="hub-card__ic"><span data-ic="monitor"></span></span>
+                    <span class="hub-card__name" data-h="staffName"></span>
+                    <span class="hub-card__sub" data-h="staffSub"></span>
+                    <span class="hub-card__go" data-h="open"><span data-ic="arrowLeft" data-ic-class="nav-arrow"></span></span>
+                </a>
+
+                <a class="hub-card" href="admin.html">
+                    <span class="hub-card__ic"><span data-ic="sliders"></span></span>
+                    <span class="hub-card__name" data-h="adminName"></span>
+                    <span class="hub-card__sub" data-h="adminSub"></span>
+                    <span class="hub-card__go" data-h="open"><span data-ic="arrowLeft" data-ic-class="nav-arrow"></span></span>
+                </a>
+
+            </div>
+
+            <p class="hub__foot" id="hubFoot"></p>
+        </div>
+    </section>
+
+    <script src="icons.js"></script>
+    <script src="data.js"></script>
+    <script src="system.js"></script>
+    <script src="console-core.js"></script>
+    <script>
+        /* The hub is three links and a sentence each, so its copy lives here
+           rather than in the shared dictionaries. */
+        (function () {
+            const COPY = {
+                ar: {
+                    sub: 'ثلاث واجهات على نظام واحد: العميل يمسح QR الطاولة ويطلب، الموظف يستقبل كل شيء مباشرة، وصاحب المطعم يدير المنيو والطاولات والإعدادات.',
+                    menuName: 'منيو العميل',
+                    menuSub: 'بوابة الـ QR: تصفّح، طلب، خدمات الطاولة، الفاتورة والدفع.',
+                    staffName: 'شاشة الصالة',
+                    staffSub: 'للويتر والكاشير: تنبيهات الطاولات، الطلبات، وطلبات الدفع لحظة بلحظة.',
+                    adminName: 'لوحة التحكم',
+                    adminSub: 'المنيو والأصناف، الطاولات وأكواد QR، الخدمات، وطريقة وصول الطلب للمطبخ.',
+                    open: 'دخول',
+                    foot: 'النظام يعمل من المتصفح على أي جهاز — تابلت أو لابتوب أو جوال — بدون أجهزة خاصة.'
+                },
+                en: {
+                    sub: 'Three interfaces on one system: the guest scans the table QR and orders, the floor gets everything live, and the owner runs the menu, the tables and the settings.',
+                    menuName: 'Guest menu',
+                    menuSub: 'The QR gateway: browse, order, table service, the bill and payment.',
+                    staffName: 'Floor console',
+                    staffSub: 'Waiter and cashier: table alerts, order tickets and payment requests, live.',
+                    adminName: 'Dashboard',
+                    adminSub: 'Menu and dishes, tables and QR codes, services, and how orders reach the kitchen.',
+                    open: 'Open',
+                    foot: 'Web based — it runs on the tablet, laptop or phone the restaurant already owns.'
+                }
+            };
+
+            function paint() {
+                const copy = COPY[CUI.state.lang] || COPY.en;
+                document.getElementById('hubTitle').textContent = OPS.config().brand.name;
+                document.getElementById('hubSub').textContent = copy.sub;
+                document.getElementById('hubFoot').textContent = copy.foot;
+                CUI.$$('[data-h]').forEach((node) => {
+                    const arrow = node.querySelector('.ic');
+                    node.textContent = copy[node.dataset.h] || '';
+                    if (arrow) node.appendChild(arrow);
+                });
+            }
+
+            document.addEventListener('DOMContentLoaded', () => {
+                hydrateIcons();
+                paint();
+            });
+        })();
+    </script>
+</body>
+</html>

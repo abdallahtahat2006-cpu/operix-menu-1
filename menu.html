@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0C0A09">
+    <meta name="description" content="The full Lumière menu — breakfast, mains, drinks and desserts.">
+    <title>The Menu · Lumière</title>
+
+    <script>
+        (function () {
+            try {
+                var theme = JSON.parse(localStorage.getItem('lum.theme')) || 'dark';
+                var lang = JSON.parse(localStorage.getItem('lum.lang')) || 'en';
+                var root = document.documentElement;
+                root.dataset.theme = theme;
+                root.lang = lang;
+                root.dir = lang === 'ar' ? 'rtl' : 'ltr';
+            } catch (e) { /* defaults in the markup already apply */ }
+        })();
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="page-menu">
+
+    <div class="grain" aria-hidden="true"></div>
+
+    <header class="topbar topbar--sticky">
+        <div class="topbar__row">
+            <a class="icon-btn nav-back" href="index.html" aria-label="Back">
+                <span data-ic="arrowLeft"></span>
+            </a>
+
+            <div class="topbar__brand">
+                <h1 class="topbar__title">Lumière</h1>
+                <button class="table-chip table-chip--mini" type="button" hidden></button>
+            </div>
+
+            <span class="topbar__spacer"></span>
+
+            <button class="icon-btn" id="searchToggle" type="button" data-i18n-label="searchShort">
+                <span data-ic="search"></span>
+            </button>
+            <button class="icon-btn icon-btn--lang" id="langBtn" type="button">ع</button>
+            <button class="icon-btn" id="themeBtn" type="button"></button>
+            <button class="icon-btn cart-btn" id="cartBtn" type="button" data-i18n-label="yourOrder">
+                <span data-ic="basket"></span>
+                <span class="cart-btn__badge" id="cartBadge">0</span>
+            </button>
+        </div>
+
+        <!-- Collapsible search -->
+        <div class="header-search" id="headerSearch">
+            <div class="header-search__inner">
+                <div class="search" role="search">
+                    <span data-ic="search" data-ic-class="search__icon"></span>
+                    <input id="menuSearchInput" type="search" data-i18n-ph="search" aria-label="Search the menu">
+                    <button class="search__clear" id="searchClear" type="button" data-i18n-label="clear">
+                        <span data-ic="x"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Category rail -->
+        <div class="rail-wrap">
+            <nav class="rail" id="rail" aria-label="Categories"></nav>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="result-meta" id="resultMeta"></div>
+
+        <div class="menu-list" id="menuList"></div>
+
+        <div class="empty" id="emptyState">
+            <div class="empty__icon"><span data-ic="search"></span></div>
+            <h2 class="empty__title" data-i18n="nothing"></h2>
+            <p class="empty__sub" data-i18n="nothingSub"></p>
+            <button class="btn btn--ghost" id="emptyReset" type="button">
+                <span data-ic="reset"></span><span data-i18n="viewAll"></span>
+            </button>
+        </div>
+    </main>
+
+    <script src="icons.js"></script>
+    <script src="data.js"></script>
+    <script src="system.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

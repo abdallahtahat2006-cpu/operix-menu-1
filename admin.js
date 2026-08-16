@@ -43,6 +43,15 @@
 
     function allDishes() {
         const s = OPS.state();
+
+        // With a database the menu is a table, and this list is the only place
+        // a hidden or sold-out dish can be switched back on — so it reads the
+        // snapshot, which staff receive complete, rather than the guest's
+        // filtered MENU or the local patch model.
+        if (OPS.mode() === 'cloud' && s.cloudMenu) {
+            return s.cloudMenu.items.slice().sort((a, b) => (a.sort || 0) - (b.sort || 0));
+        }
+
         const list = (window.__OPS_MENU || [])
             .concat(s.menu.custom || [])
             .map((item) => withPatch(item, s.menu.items[item.id]))
@@ -58,6 +67,11 @@
 
     function allCats() {
         const s = OPS.state();
+
+        if (OPS.mode() === 'cloud' && s.cloudMenu) {
+            return s.cloudMenu.cats.slice().sort((a, b) => (a.sort || 0) - (b.sort || 0));
+        }
+
         const list = (window.__OPS_CATS || [])
             .concat(s.menu.customCats || [])
             .filter((c) => c.id !== 'all')
@@ -88,18 +102,113 @@
        ------------------------------------------------------------------ */
     const orderTotal = (o) => (o.lines || []).reduce((s, l) => s + l.price * l.qty, 0);
 
+    /* Three depths of hindsight: today is live and detailed, the week is a
+       row per day, the month is one line. Everything past today comes from
+       receipts, so clearing a table never costs a number. */
+    let stats = null;
+    let range = 'today';
+
+    function loadStats() {
+        if (OPS.mode() !== 'cloud') return;
+        CLOUD.stats().then((data) => {
+            stats = data;
+            if (pane === 'overview') render();
+        });
+    }
+
+    function rangeTabs() {
+        return `<nav class="seg" style="margin-bottom:1rem">
+            ${[['today', 'statsToday'], ['week', 'statsWeek'], ['month', 'statsMonth']].map(([id, key]) => `
+                <button class="seg__btn ${range === id ? 'active' : ''}" type="button" data-act="range" data-range="${id}">
+                    ${esc(t(key))}
+                </button>`).join('')}
+        </nav>`;
+    }
+
+    const kpiCard = (ic, label, value) => `
+        <div class="kpi">
+            <div class="kpi__label">${icon(ic)}<span>${esc(label)}</span></div>
+            <div class="kpi__value">${esc(String(value))}</div>
+        </div>`;
+
+    /** Week and month: fewer numbers, longer memory. */
+    function renderHistory() {
+        const days = (stats && stats.days) || [];
+        const span = range === 'week' ? 7 : 30;
+        const rows = days.slice(0, span);
+        const top = (stats && (range === 'week' ? stats.top7 : stats.top30)) || [];
+
+        const sum = (key) => rows.reduce((n, r) => n + Number(r[key] || 0), 0);
+        const revenue = sum('revenue');
+        const tables = sum('tables_served');
+
+        if (!rows.length) {
+            return rangeTabs() + `<div class="panel"><div class="c-empty">${icon('chartUp')}<span>${esc(t('noHistory'))}</span></div></div>`;
+        }
+
+        const peak = Math.max.apply(null, rows.map((r) => Number(r.revenue) || 0)) || 1;
+
+        return rangeTabs() + `
+            <div class="kpis">
+                ${kpiCard('coins', t('kpiRevenue'), money(revenue))}
+                ${kpiCard('tableIcon', t('tablesServed'), tables)}
+                ${kpiCard('chartUp', t('kpiAvg'), money(tables ? revenue / tables : 0))}
+                ${range === 'week' ? kpiCard('users', t('guestsServed'), sum('guests')) : ''}
+            </div>
+
+            ${range === 'week' ? `
+            <div class="panel">
+                <div class="panel__head"><h2 class="panel__title">${esc(t('day'))}</h2></div>
+                <div class="panel__body panel__body--flush">
+                    ${rows.map((r) => `
+                        <div class="rank">
+                            <span style="min-width:8ch;font-size:.85rem">${esc(r.day)}</span>
+                            <span class="rank__bar"><i style="width:${Math.round(Number(r.revenue) / peak * 100)}%"></i></span>
+                            <span class="rank__n" style="min-width:7ch">${money(Number(r.revenue))}</span>
+                            <span class="muted" style="font-size:.76rem;min-width:6ch;text-align:end">${r.tables_served} ${esc(t('tablesServed'))}</span>
+                        </div>`).join('')}
+                </div>
+            </div>` : ''}
+
+            <div class="panel">
+                <div class="panel__head"><h2 class="panel__title">${esc(t('topDishes'))}</h2></div>
+                <div class="panel__body panel__body--flush">
+                    ${top.length ? top.slice(0, range === 'week' ? 8 : 5).map((row, i) => `
+                        <div class="rank">
+                            <span class="rank__no">${i + 1}</span>
+                            <span style="flex:1;font-size:.88rem">${esc(CUI.state.lang === 'ar' ? row.ar : row.en)}</span>
+                            <span class="rank__n">${row.qty}</span>
+                        </div>`).join('')
+                        : `<div class="c-empty">${icon('plate')}<span>${esc(t('noHistory'))}</span></div>`}
+                </div>
+            </div>`;
+    }
+
     function renderOverview() {
+        if (range !== 'today') {
+            return `<div class="c-head">
+                        <div>
+                            <h1 class="c-title">${esc(t('navOverview'))}</h1>
+                            <p class="c-sub">${esc(OPS.config().brand.name)}</p>
+                        </div>
+                    </div>` + renderHistory();
+        }
+
         const s = OPS.state();
         const today = new Date().setHours(0, 0, 0, 0);
         const orders = s.orders.filter((o) => (o.at || o.placedAt) >= today && o.status !== -1);
-        const revenue = orders.reduce((sum, o) => sum + orderTotal(o), 0);
+
+        // Live tables plus the ones already closed and filed today.
+        const closed = (stats && stats.today) || { tables: 0, revenue: 0, orders: 0 };
+        const revenue = orders.reduce((sum, o) => sum + orderTotal(o), 0) + closed.revenue;
+        const count = orders.length + closed.orders;
         const tables = Object.keys(s.tables).length;
 
         const kpis = [
-            { ic: 'receipt', label: 'kpiOrders', value: orders.length },
+            { ic: 'receipt', label: 'kpiOrders', value: count },
             { ic: 'coins', label: 'kpiRevenue', value: money(revenue) },
             { ic: 'tableIcon', label: 'kpiTables', value: tables },
-            { ic: 'chartUp', label: 'kpiAvg', value: money(orders.length ? revenue / orders.length : 0) }
+            { ic: 'chartUp', label: 'kpiAvg', value: money(count ? revenue / count : 0) }
         ];
 
         /* Most ordered, all time — what the owner promotes next. */
@@ -126,12 +235,10 @@
                 </div>
             </div>
 
+            ${rangeTabs()}
+
             <div class="kpis">
-                ${kpis.map((k) => `
-                    <div class="kpi">
-                        <div class="kpi__label">${icon(k.ic)}<span>${esc(t(k.label))}</span></div>
-                        <div class="kpi__value">${esc(String(k.value))}</div>
-                    </div>`).join('')}
+                ${kpis.map((k) => kpiCard(k.ic, t(k.label), k.value)).join('')}
             </div>
 
             <div class="panel">
@@ -802,14 +909,18 @@
             </div>
 
             <div class="panel">
-                <div class="panel__head"><h2 class="panel__title">${esc(t('dangerZone'))}</h2></div>
+                <div class="panel__head">
+                    <h2 class="panel__title">${esc(t('dangerZone'))}</h2>
+                    <span class="panel__sub">${esc(t('endDaySub'))}</span>
+                </div>
                 <div class="panel__body">
-                    <button class="btn btn--ghost btn--block" type="button" data-act="reset-activity">
-                        ${icon('reset')}<span>${esc(t('resetActivity'))}</span>
+                    <button class="btn btn--ghost btn--block" type="button" data-act="end-day">
+                        ${icon('reset')}<span>${esc(t('endDayNow'))}</span>
                     </button>
-                    <button class="btn btn--plain btn--block" type="button" data-act="reset-all">
-                        ${esc(t('resetAll'))}
-                    </button>
+                    ${OPS.mode() === 'cloud' ? '' : `
+                        <button class="btn btn--plain btn--block" type="button" data-act="reset-all">
+                            ${esc(t('resetAll'))}
+                        </button>`}
                 </div>
             </div>`;
     }
@@ -985,9 +1096,21 @@
             /* --- order flow --- */
             case 'flow': OPS.setConfig({ flow: id }); render(); break;
 
-            /* --- danger zone --- */
-            case 'reset-activity':
-                if (confirm(t('confirmQ'))) { OPS.clearActivity(); CUI.toast(t('saved'), 'reset'); render(); }
+            /* --- range + day close --- */
+            case 'range':
+                range = act.dataset.range;
+                if (range !== 'today' && !stats) loadStats();
+                render();
+                break;
+
+            case 'end-day':
+                if (confirm(t('endDaySub'))) {
+                    OPS.endDay().then((n) => {
+                        CUI.toast(t('dayClosed') + (n ? ' · ' + n : ''), 'reset');
+                        loadStats();
+                        render();
+                    });
+                }
                 break;
             case 'reset-all':
                 if (confirm(t('resetConfirm'))) { OPS.resetAll(); location.reload(); }
@@ -1000,11 +1123,13 @@
     /* ---------------------------------------------------------------------
        Boot
        ------------------------------------------------------------------ */
-    document.addEventListener('DOMContentLoaded', () => CUI.requireStaff(() => OPS.ready(() => {
+    // The dashboard is the owner's screen: a waiter's account cannot open it.
+    document.addEventListener('DOMContentLoaded', () => CUI.requireStaff({ manager: true }, () => OPS.ready(() => {
         hydrateIcons();
         CUI.bindChrome(render);
         $('#brandName').textContent = OPS.config().brand.name;
         render();
+        loadStats();
 
         // Another device changed something — repaint, unless a modal is open.
         OPS.subscribe(() => {

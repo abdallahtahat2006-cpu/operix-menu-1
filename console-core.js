@@ -219,14 +219,14 @@
        a real sign-in: an account is not enough, it has to have a row in
        public.staff, which is what every RLS policy actually asks about.
        ------------------------------------------------------------------ */
-    function paintGate(then) {
+    function paintGate(then, needsManager) {
         const host = document.createElement('div');
         host.className = 'gate';
         host.innerHTML = `
             <form class="gate__card" id="gateForm" autocomplete="on">
                 <div class="gate__mark">${icon('shield')}</div>
                 <h1 class="gate__title">${esc(OPS.config().brand.name)}</h1>
-                <p class="gate__sub">${esc(t('signInSub'))}</p>
+                <p class="gate__sub">${esc(needsManager ? t('signInManager') : t('signInSub'))}</p>
 
                 <label class="field">
                     <span class="field__label">${esc(t('email'))}</span>
@@ -268,6 +268,16 @@
                 return;
             }
 
+            // Working here is not the same as running the place.
+            if (needsManager && (!CLOUD.staff || CLOUD.staff.role !== 'manager')) {
+                await CLOUD.signOut();
+                error.hidden = false;
+                error.textContent = t('notManager');
+                button.disabled = false;
+                $('#gatePass').value = '';
+                return;
+            }
+
             await OPS.reloadCloud();
             host.classList.remove('show');
             setTimeout(() => host.remove(), 300);
@@ -275,12 +285,24 @@
         });
     }
 
-    async function requireStaff(then) {
+    /** requireStaff(then) — any staff. requireStaff({manager:true}, then) —
+        the dashboard, which is the owner's screen, not the floor's. */
+    async function requireStaff(opts, then) {
+        if (typeof opts === 'function') { then = opts; opts = {}; }
+        const needsManager = !!opts.manager;
+
         if (!global.CLOUD || !CLOUD.enabled) { then(); return; }
 
-        await OPS.ready(() => {});                 // let the first snapshot land
-        if (CLOUD.isStaff()) { then(); return; }
-        paintGate(then);
+        await OPS.ready();                         // let the first snapshot land
+
+        const allowed = CLOUD.isStaff() &&
+            (!needsManager || (CLOUD.staff && CLOUD.staff.role === 'manager'));
+
+        if (allowed) { then(); return; }
+
+        // Signed in, but on the wrong screen: start the gate from scratch.
+        if (CLOUD.isStaff()) await CLOUD.signOut();
+        paintGate(then, needsManager);
     }
 
     global.CUI = {

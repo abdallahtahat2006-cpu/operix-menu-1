@@ -732,9 +732,17 @@
                 s.orders = []; s.calls = []; s.bills = []; s.log = []; s.tables = {};
             }, { type: 'reset-activity' });
 
-            // Cloud: close the floor rather than delete history.
-            if (cloudOn()) global.CLOUD.endDay();
+            if (cloudOn()) global.CLOUD.endDay().then(() => OPS.reloadCloud());
             return out;
+        },
+
+        /** Archive and clear everything left from before today. Safe to call
+            as often as you like — yesterday can only be closed once. */
+        async endDay() {
+            if (!cloudOn()) { OPS.clearActivity(); return 0; }
+            const cleared = await global.CLOUD.endDay();
+            await OPS.reloadCloud();
+            return cleared || 0;
         },
 
         /** Absolute URL a table's QR code should carry, token included. */
@@ -772,6 +780,18 @@
             /* sign in */
             signIn: 'Sign in',
             signInSub: 'This screen is for the restaurant team.',
+            signInManager: 'This screen is for the owner or manager.',
+            notManager: 'This account is not a manager',
+            dayClosed: 'Yesterday filed and cleared',
+            endDayNow: 'Close the day now',
+            endDaySub: 'File every open table as a receipt and clear the floor.',
+            statsToday: 'Today',
+            statsWeek: '7 days',
+            statsMonth: '30 days',
+            tablesServed: 'Tables served',
+            guestsServed: 'Guests',
+            noHistory: 'No closed tables in this period yet',
+            day: 'Day',
             signOut: 'Sign out',
             email: 'E-mail',
             password: 'Password',
@@ -953,6 +973,18 @@
             /* تسجيل الدخول */
             signIn: 'تسجيل الدخول',
             signInSub: 'هذه الشاشة لطاقم المطعم.',
+            signInManager: 'هذه الشاشة لصاحب المطعم أو المدير.',
+            notManager: 'هذا الحساب ليس حساب مدير',
+            dayClosed: 'تم أرشفة يوم أمس وتنظيف الصالة',
+            endDayNow: 'إغلاق اليوم الآن',
+            endDaySub: 'تُحفظ كل طاولة مفتوحة كفاتورة وتُفرَّغ الصالة.',
+            statsToday: 'اليوم',
+            statsWeek: '٧ أيام',
+            statsMonth: '٣٠ يوم',
+            tablesServed: 'طاولات مخدومة',
+            guestsServed: 'الضيوف',
+            noHistory: 'ما في طاولات مغلقة بهذه الفترة بعد',
+            day: 'اليوم',
             signOut: 'تسجيل الخروج',
             email: 'الإيميل',
             password: 'كلمة السر',

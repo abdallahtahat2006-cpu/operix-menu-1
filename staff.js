@@ -598,6 +598,31 @@
     }
 
     /* ---------------------------------------------------------------------
+       The day rolls over on its own
+       Anything still on the floor from before the restaurant's local
+       midnight is filed as a receipt and cleared, so nobody starts a shift
+       looking at yesterday's tickets. Nothing else is touched.
+       ------------------------------------------------------------------ */
+    function scheduleRollover() {
+        const now = new Date();
+        const next = new Date(now);
+        next.setHours(24, 0, 30, 0);          // half a minute past midnight
+
+        setTimeout(async () => {
+            const cleared = await OPS.endDay();
+            if (cleared) CUI.toast(t('dayClosed') + ' · ' + cleared, 'reset');
+            render();
+            scheduleRollover();
+        }, Math.max(60000, next - now));
+    }
+
+    async function dayGuard() {
+        if (OPS.mode() !== 'cloud') return;
+        await OPS.endDay();                   // catches a console opened days later
+        scheduleRollover();
+    }
+
+    /* ---------------------------------------------------------------------
        Render + events
        ------------------------------------------------------------------ */
     let booted = false;
@@ -755,6 +780,8 @@
             noticeNew();
             render();
         });
+
+        dayGuard();
 
         // Tell the guest app a human is watching, so it stops simulating.
         OPS.markStaffOnline();

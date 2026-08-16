@@ -304,12 +304,11 @@
         return res.data;
     };
 
-    /** Closing a table ends every device's session on it. */
+    /** Closing a table empties it: the RPC files a receipt, then deletes the
+        session — which cascades to its tickets, lines, calls and bill. */
     CLOUD.closeTable = async function (table) {
-        const res = await client.from('sessions')
-            .update({ status: 'closed', closed_at: new Date().toISOString() })
-            .eq('table_id', table).eq('status', 'open');
-        return res.error ? fail('closing table ' + table, res.error) : true;
+        const res = await client.rpc('close_table', { p_table: table });
+        return res.error ? fail('closing table ' + table, res.error) : res.data;
     };
 
     CLOUD.setGuests = async function (sessionId, guests) {
@@ -531,17 +530,42 @@
         return bad ? fail('reordering', bad.error) : true;
     };
 
-    /** End of service: close every table, clear what is still open. History
-        stays — deleting a day's tickets is a deliberate SQL job, not a tap. */
+    /** End of service. Idempotent by design: it only archives and clears
+        sessions opened before the restaurant's local midnight, so the floor
+        console can call it on every boot without thinking about it. */
     CLOUD.endDay = async function () {
-        const now = new Date().toISOString();
-        const results = await Promise.all([
-            client.from('sessions').update({ status: 'closed', closed_at: now }).eq('status', 'open'),
-            client.from('service_calls').update({ status: 'done', resolved_at: now }).eq('status', 'pending'),
-            client.from('bills').update({ status: 'settled', settled_at: now }).eq('status', 'requested')
+        const res = await client.rpc('end_day');
+        return res.error ? fail('closing the day', res.error) : res.data;
+    };
+
+    /* ---------------------------------------------------------------------
+       Figures for the dashboard — read from receipts, not from the floor,
+       which is why they survive a table being cleared.
+       ------------------------------------------------------------------ */
+    CLOUD.stats = async function () {
+        const midnight = new Date();
+        midnight.setHours(0, 0, 0, 0);
+
+        const [days, top7, top30, today] = await Promise.all([
+            client.from('v_stats_daily').select('*').limit(31),
+            client.rpc('top_dishes', { p_days: 7 }),
+            client.rpc('top_dishes', { p_days: 30 }),
+            client.from('receipts').select('total, orders_count, guests')
+                  .gte('closed_at', midnight.toISOString())
         ]);
-        const bad = results.find((r) => r.error);
-        return bad ? fail('closing the floor', bad.error) : true;
+
+        const closed = today.data || [];
+        return {
+            days: days.data || [],
+            top7: top7.data || [],
+            top30: top30.data || [],
+            today: {
+                tables: closed.length,
+                revenue: closed.reduce((s, r) => s + Number(r.total), 0),
+                orders: closed.reduce((s, r) => s + r.orders_count, 0),
+                guests: closed.reduce((s, r) => s + r.guests, 0)
+            }
+        };
     };
 
     /* ---------------------------------------------------------------------

@@ -23,6 +23,11 @@
     const CHANNEL = 'operix-system';
     const SCHEMA = 1;
 
+    /* Cloud mode is decided by supabase.js: with keys and a reachable client
+       the database is the truth and this file is its cache; without them the
+       localStorage engine below runs the whole system on one device. */
+    const cloudOn = () => !!(global.CLOUD && global.CLOUD.enabled);
+
     /* Staff console heartbeat: while a floor console is open the guest app
        stops simulating the kitchen and follows the real staff actions. */
     const STAFF_TTL = 45000;
@@ -96,7 +101,9 @@
     }
 
     function load() {
-        cache = Object.assign(blank(), readRaw() || {});
+        // In cloud mode nothing is restored from disk: a stale local copy of
+        // "table 7 is seated" would paint a floor that no longer exists.
+        cache = Object.assign(blank(), cloudOn() ? {} : (readRaw() || {}));
         // Merge nested defaults so a stored blob from an older build still boots.
         cache.config = Object.assign(defaultConfig(), cache.config);
         cache.config.brand = Object.assign(defaultConfig().brand, cache.config.brand);
@@ -105,6 +112,7 @@
     }
 
     function persist() {
+        if (cloudOn()) return;              // the database is the store
         try {
             localStorage.setItem(KEY, JSON.stringify(cache));
         } catch (e) { /* quota or no storage — the tab keeps working in memory */ }
@@ -153,7 +161,9 @@
         if (e.key === KEY) refresh({ type: 'sync' });
     });
 
-    setInterval(() => { refresh({ type: 'sync' }); }, 1200);
+    // Local mode polls because file:// fires neither of the two above.
+    // Cloud mode gets a websocket instead and skips the poll entirely.
+    if (!cloudOn()) setInterval(() => { refresh({ type: 'sync' }); }, 1200);
 
     /* ---------------------------------------------------------------------
        Write path — every mutation goes through here so the revision counter,
@@ -169,7 +179,15 @@
         return result;
     }
 
-    const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    /* Ids are generated here, not by the database, so a ticket has the same
+       identity in the guest's tab and in the row it becomes — which is what
+       lets the two reconcile. They must therefore be real UUIDs. */
+    const uid = () => (global.crypto && global.crypto.randomUUID
+        ? global.crypto.randomUUID()
+        : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+            const r = Math.random() * 16 | 0;
+            return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+        }));
 
     /* ---------------------------------------------------------------------
        Activity log — what the dashboard's "recent activity" reads
@@ -197,6 +215,30 @@
     function applyMenu() {
         const s = cache;
         if (typeof MENU === 'undefined' || typeof CATEGORIES === 'undefined') return;
+
+        // Remember data.js as it shipped, before anything rewrites it.
+        if (!global.__OPS_CATS) global.__OPS_CATS = CATEGORIES.slice();
+        if (!global.__OPS_MENU) global.__OPS_MENU = MENU.slice();
+
+        /* In cloud mode the menu is not a patch over data.js — it is the
+           `categories` and `items` tables. Only the "Everything" tab, which
+           is a guest-app device rather than a real category, is kept. */
+        if (cloudOn() && s.cloudMenu) {
+            const everything = global.__OPS_CATS.find((c) => c.id === 'all');
+            const cats = (everything ? [everything] : [])
+                .concat(s.cloudMenu.cats.filter((c) => !c.hidden));
+
+            CATEGORIES.length = 0;
+            cats.forEach((c) => CATEGORIES.push(c));
+
+            const items = s.cloudMenu.items.filter((i) => !i.hidden);
+            MENU.length = 0;
+            items.forEach((i) => MENU.push(i));
+
+            applyServices(s);
+            applyBrand(s);
+            return;
+        }
 
         /* --- categories --- */
         if (!global.__OPS_CATS) global.__OPS_CATS = CATEGORIES.slice();
@@ -242,29 +284,113 @@
         MENU.length = 0;
         items.forEach((i) => MENU.push(i));
 
-        /* --- services the guest may call for --- */
-        if (typeof SERVICE_REASONS !== 'undefined') {
-            if (!global.__OPS_SERVICES) global.__OPS_SERVICES = SERVICE_REASONS.slice();
-            const list = global.__OPS_SERVICES
-                .filter((r) => s.config.services[r.id] !== false)
-                .concat(s.config.extraServices || []);
-            SERVICE_REASONS.length = 0;
-            list.forEach((r) => SERVICE_REASONS.push(r));
+        applyServices(s);
+        applyBrand(s);
+    }
+
+    /* --- services the guest may call for --- */
+    function applyServices(s) {
+        if (typeof SERVICE_REASONS === 'undefined') return;
+        if (!global.__OPS_SERVICES) global.__OPS_SERVICES = SERVICE_REASONS.slice();
+
+        const list = global.__OPS_SERVICES
+            .filter((r) => s.config.services[r.id] !== false)
+            .concat(s.config.extraServices || []);
+
+        SERVICE_REASONS.length = 0;
+        list.forEach((r) => SERVICE_REASONS.push(r));
+    }
+
+    /* --- restaurant details --- */
+    function applyBrand(s) {
+        if (typeof RESTAURANT === 'undefined') return;
+        const b = s.config.brand;
+        RESTAURANT.name = b.name;
+        RESTAURANT.tagline = b.tagline;
+        RESTAURANT.address = b.address;
+        RESTAURANT.phone = b.phone;
+        RESTAURANT.wifi = b.wifi;
+        RESTAURANT.currency = b.currency;
+        RESTAURANT.hours = { open: b.openHour, close: b.closeHour };
+        RESTAURANT.servicePct = b.servicePct;
+        RESTAURANT.tables = s.config.tables;
+    }
+
+    /* ---------------------------------------------------------------------
+       Cloud hydration
+       The cache above becomes a read model of the database: one snapshot on
+       load, then a fresh snapshot whenever realtime says something moved.
+       Interfaces wait for OPS.ready() so they never paint an empty menu.
+       ------------------------------------------------------------------ */
+    let resolveReady;
+    const readyPromise = new Promise((resolve) => { resolveReady = resolve; });
+
+    function applySnapshot(snap) {
+        if (!snap) return;
+        if (snap.config) cache.config = Object.assign(defaultConfig(), snap.config);
+        cache.cloudMenu = { cats: snap.cats, items: snap.items };
+        cache.tables = snap.tables;
+        cache.sessions = snap.sessions;
+        cache.orders = snap.orders;
+        cache.calls = snap.calls;
+        cache.bills = snap.bills;
+        cache.log = snap.log;
+        cache.tokens = snap.tokens || {};
+        cache.rev = (cache.rev || 0) + 1;
+        applyMenu();
+    }
+
+    /* The back of house never signs in anonymously: a waiter's tablet would
+       collect a junk user on every visit, and an anonymous session cannot
+       read the floor anyway. */
+    const isConsolePage = () => !!(document.body && document.body.classList.contains('console'));
+
+    async function hydrate() {
+        await global.CLOUD.ensureUser({ anonymous: !isConsolePage() });
+        applySnapshot(await global.CLOUD.snapshot());
+        fire({ type: 'sync' });
+        document.documentElement.classList.remove('booting');
+        resolveReady(OPS);
+
+        global.CLOUD.listen(async () => {
+            applySnapshot(await global.CLOUD.snapshot());
+            fire({ type: 'sync' });
+        });
+    }
+
+    /** The open session this device owns at a table, opening one if needed. */
+    async function sessionFor(table, guests) {
+        if (!table) return null;
+
+        // Staff writing a manual ticket join the table's existing session
+        // rather than opening a second one beside the guest's.
+        if (global.CLOUD.isStaff()) {
+            const open = (cache.sessions || []).find((s) => s.table_id === table && s.status === 'open');
+            if (open) return open.id;
+        } else {
+            const mine = (cache.sessions || []).find(
+                (s) => s.table_id === table && s.status === 'open' &&
+                       global.CLOUD.user && s.created_by === global.CLOUD.user.id
+            );
+            if (mine) return mine.id;
         }
 
-        /* --- restaurant details --- */
-        if (typeof RESTAURANT !== 'undefined') {
-            const b = s.config.brand;
-            RESTAURANT.name = b.name;
-            RESTAURANT.tagline = b.tagline;
-            RESTAURANT.address = b.address;
-            RESTAURANT.phone = b.phone;
-            RESTAURANT.wifi = b.wifi;
-            RESTAURANT.currency = b.currency;
-            RESTAURANT.hours = { open: b.openHour, close: b.closeHour };
-            RESTAURANT.servicePct = b.servicePct;
-            RESTAURANT.tables = s.config.tables;
-        }
+        const row = await global.CLOUD.openSession(table, guests, qrToken());
+        if (!row) return null;
+        cache.sessions = (cache.sessions || []).concat(row);
+        return row.id;
+    }
+
+    /** A tokened QR carries ?k=… ; kept for the life of the tab. */
+    let tokenSeen = null;
+    function qrToken() {
+        if (tokenSeen !== null) return tokenSeen;
+        try {
+            tokenSeen = new URLSearchParams(global.location.search).get('k') ||
+                        sessionStorage.getItem('operix.k') || null;
+            if (tokenSeen) sessionStorage.setItem('operix.k', tokenSeen);
+        } catch (e) { tokenSeen = null; }
+        return tokenSeen;
     }
 
     /* ---------------------------------------------------------------------
@@ -276,6 +402,27 @@
         state() { return cache; },
         config() { return cache.config; },
         rev() { return cache.rev; },
+
+        /** 'cloud' when a database is behind it, 'local' on one device. */
+        mode() { return cloudOn() ? 'cloud' : 'local'; },
+
+        /** Run once the restaurant is loaded — immediately in local mode.
+            Returns a promise too, so callers can await the first snapshot. */
+        ready(fn) {
+            if (!cloudOn()) {
+                if (fn) fn(OPS);
+                return Promise.resolve(OPS);
+            }
+            return fn ? readyPromise.then(fn) : readyPromise;
+        },
+
+        /** Re-read everything — used after a staff sign-in changes what RLS
+            is willing to hand over. */
+        async reloadCloud() {
+            if (!cloudOn()) return;
+            applySnapshot(await global.CLOUD.snapshot());
+            fire({ type: 'sync' });
+        },
 
         /** fn(state, meta) on every change, local or from another tab. */
         subscribe(fn) { listeners.push(fn); return () => {
@@ -290,52 +437,112 @@
 
         /* --- settings ---------------------------------------------------- */
         setConfig(patch, meta) {
-            return write((s) => {
+            const out = write((s) => {
                 s.config = Object.assign(s.config, patch);
                 if (patch.brand) s.config.brand = Object.assign(s.config.brand, patch.brand);
             }, meta || { type: 'config' });
+
+            // `sound` is a preference of this device, not of the restaurant.
+            if (cloudOn() && Object.keys(patch).some((k) => k !== 'sound')) {
+                global.CLOUD.saveSettings(cache.config);
+            }
+            return out;
         },
 
-        /* --- menu editing ------------------------------------------------ */
+        /* --- menu editing ------------------------------------------------
+           Cloud mode writes the row and lets realtime bring the new menu
+           back; the local patch keeps the dashboard responsive meanwhile. */
         patchItem(id, patch) {
-            return write((s) => {
+            const out = write((s) => {
                 s.menu.items[id] = Object.assign({}, s.menu.items[id], patch);
+                if (s.cloudMenu) {
+                    const item = s.cloudMenu.items.find((i) => i.id === id);
+                    if (item) Object.assign(item, patch);
+                }
             }, { type: 'menu' });
+
+            if (cloudOn()) {
+                const columns = {};
+                if ('price' in patch) columns.price = patch.price;
+                if ('available' in patch) columns.available = patch.available;
+                if ('hidden' in patch) columns.hidden = patch.hidden;
+                if ('cat' in patch) columns.category_id = patch.cat;
+                if ('img' in patch) columns.img_url = patch.img;
+                if ('tags' in patch) columns.tags = patch.tags;
+                if ('time' in patch) columns.prep_min = patch.time;
+                if ('kcal' in patch) columns.kcal = patch.kcal;
+                if (patch.name) { columns.name_ar = patch.name.ar; columns.name_en = patch.name.en; }
+                if (patch.desc) { columns.desc_ar = patch.desc.ar; columns.desc_en = patch.desc.en; }
+                if (Object.keys(columns).length) global.CLOUD.patchItem(id, columns);
+            }
+            return out;
         },
         addItem(item) {
-            return write((s) => {
+            const out = write((s) => {
                 s.menu.custom.push(normalizeItem(item));
+                if (s.cloudMenu) s.cloudMenu.items.push(normalizeItem(item));
             }, { type: 'menu' });
+            if (cloudOn()) global.CLOUD.saveItem(normalizeItem(item));
+            return out;
         },
         removeItem(id) {
-            return write((s) => {
+            const out = write((s) => {
                 const at = s.menu.custom.findIndex((i) => i.id === id);
                 if (at !== -1) s.menu.custom.splice(at, 1);
                 else s.menu.items[id] = Object.assign({}, s.menu.items[id], { hidden: true, deleted: true });
                 s.menu.order = (s.menu.order || []).filter((x) => x !== id);
+                if (s.cloudMenu) s.cloudMenu.items = s.cloudMenu.items.filter((i) => i.id !== id);
             }, { type: 'menu' });
+            if (cloudOn()) global.CLOUD.deleteItem(id);
+            return out;
         },
         setItemOrder(ids) {
-            return write((s) => { s.menu.order = ids.slice(); }, { type: 'menu' });
+            const out = write((s) => { s.menu.order = ids.slice(); }, { type: 'menu' });
+            if (cloudOn()) global.CLOUD.setSort('items', ids);
+            return out;
         },
         patchCat(id, patch) {
-            return write((s) => {
+            const out = write((s) => {
                 s.menu.cats[id] = Object.assign({}, s.menu.cats[id], patch);
+                if (s.cloudMenu) {
+                    const cat = s.cloudMenu.cats.find((c) => c.id === id);
+                    if (cat) Object.assign(cat, patch);
+                }
             }, { type: 'menu' });
+
+            if (cloudOn()) {
+                const columns = {};
+                if ('ar' in patch) columns.name_ar = patch.ar;
+                if ('en' in patch) columns.name_en = patch.en;
+                if ('hidden' in patch) columns.hidden = patch.hidden;
+                if (patch.note) { columns.note_ar = patch.note.ar || ''; columns.note_en = patch.note.en || ''; }
+                if (Object.keys(columns).length) global.CLOUD.saveCategoryPatch(id, columns);
+            }
+            return out;
         },
         addCat(cat) {
-            return write((s) => { s.menu.customCats.push(cat); }, { type: 'menu' });
+            const out = write((s) => {
+                s.menu.customCats.push(cat);
+                if (s.cloudMenu) s.cloudMenu.cats.push(cat);
+            }, { type: 'menu' });
+            if (cloudOn()) global.CLOUD.saveCategory(cat);
+            return out;
         },
         removeCat(id) {
-            return write((s) => {
+            const out = write((s) => {
                 const at = s.menu.customCats.findIndex((c) => c.id === id);
                 if (at !== -1) s.menu.customCats.splice(at, 1);
                 else s.menu.cats[id] = Object.assign({}, s.menu.cats[id], { hidden: true });
                 s.menu.catOrder = (s.menu.catOrder || []).filter((x) => x !== id);
+                if (s.cloudMenu) s.cloudMenu.cats = s.cloudMenu.cats.filter((c) => c.id !== id);
             }, { type: 'menu' });
+            if (cloudOn()) global.CLOUD.deleteCategory(id);
+            return out;
         },
         setCatOrder(ids) {
-            return write((s) => { s.menu.catOrder = ids.slice(); }, { type: 'menu' });
+            const out = write((s) => { s.menu.catOrder = ids.slice(); }, { type: 'menu' });
+            if (cloudOn()) global.CLOUD.setSort('categories', ids);
+            return out;
         },
 
         /* --- tables ------------------------------------------------------ */
@@ -344,7 +551,7 @@
         },
         seat(num, guests) {
             if (!num) return;
-            return write((s) => {
+            const out = write((s) => {
                 const prev = s.tables[num] || {};
                 s.tables[num] = {
                     status: 'seated',
@@ -352,28 +559,42 @@
                     since: prev.since || Date.now()
                 };
             }, { type: 'seat', table: num });
+
+            if (cloudOn()) sessionFor(num, guests);
+            return out;
         },
         clearTable(num) {
-            return write((s) => {
+            const out = write((s) => {
                 delete s.tables[num];
                 s.orders = s.orders.filter((o) => o.table !== num || o.status >= 4);
                 s.calls.forEach((c) => { if (c.table === num && c.status === 'pending') c.status = 'done'; });
                 s.bills.forEach((b) => { if (b.table === num && b.status === 'requested') b.status = 'settled'; });
                 pushLog(s, 'table', num, { en: 'Table cleared', ar: 'تم إخلاء الطاولة' });
             }, { type: 'table', table: num });
+
+            if (cloudOn()) global.CLOUD.closeTable(num);
+            return out;
         },
 
         /* --- orders ------------------------------------------------------ */
         orderById(id) { return cache.orders.find((o) => o.id === id) || null; },
 
         addOrder(order) {
-            return write((s) => {
-                s.orders.push(Object.assign({
-                    id: uid(), status: null, accepted: false, at: Date.now()
-                }, order));
+            const row = Object.assign({ id: uid(), status: null, accepted: false, at: Date.now() }, order);
+
+            const out = write((s) => {
+                s.orders.push(row);
                 if (order.table) OPS._seatInline(s, order.table);
                 pushLog(s, 'order', order.table, { en: 'New order', ar: 'طلب جديد' });
             }, { type: 'order', table: order.table });
+
+            // The ticket needs a session; opening one is a round trip, so the
+            // guest sees it locally first and the insert follows.
+            if (cloudOn()) {
+                sessionFor(row.table, (cache.tables[row.table] || {}).guests)
+                    .then((session) => session && global.CLOUD.insertOrder(Object.assign({}, row, { session: session })));
+            }
+            return out;
         },
 
         /** Seat a table without a second write — used from inside a write(). */
@@ -383,17 +604,20 @@
         },
 
         setOrderStatus(id, status) {
-            return write((s) => {
+            const out = write((s) => {
                 const order = s.orders.find((o) => o.id === id);
                 if (!order) return;
                 order.status = status;
                 order.statusAt = Date.now();
                 if (status >= 1) order.accepted = true;
             }, { type: 'status', id: id, status: status });
+
+            if (cloudOn()) global.CLOUD.setOrderStatus(id, status);
+            return out;
         },
 
         rejectOrder(id, reason) {
-            return write((s) => {
+            const out = write((s) => {
                 const order = s.orders.find((o) => o.id === id);
                 if (!order) return;
                 order.status = -1;
@@ -401,11 +625,14 @@
                 order.statusAt = Date.now();
                 pushLog(s, 'order', order.table, { en: 'Order rejected', ar: 'تم رفض الطلب' });
             }, { type: 'status', id: id, status: -1 });
+
+            if (cloudOn()) global.CLOUD.rejectOrder(id, reason);
+            return out;
         },
 
         /** The cashier trimmed the ticket before it went to the kitchen. */
         editOrderLines(id, lines) {
-            return write((s) => {
+            const out = write((s) => {
                 const order = s.orders.find((o) => o.id === id);
                 if (!order) return;
                 order.lines = lines;
@@ -413,37 +640,60 @@
                 order.statusAt = Date.now();
                 pushLog(s, 'order', order.table, { en: 'Order edited by staff', ar: 'تم تعديل الطلب' });
             }, { type: 'edit', id: id });
+
+            if (cloudOn()) global.CLOUD.replaceOrderLines(id, lines);
+            return out;
         },
 
         /* --- service calls ----------------------------------------------- */
         addCall(call) {
-            return write((s) => {
-                s.calls.push(Object.assign({ id: uid(), at: Date.now(), status: 'pending' }, call));
+            const row = Object.assign({ id: uid(), at: Date.now(), status: 'pending' }, call);
+            const out = write((s) => {
+                s.calls.push(row);
                 if (call.table) OPS._seatInline(s, call.table);
                 pushLog(s, 'call', call.table, { en: 'Waiter called', ar: 'طلب ويتر' });
             }, { type: 'call', table: call.table });
+
+            if (cloudOn()) {
+                sessionFor(row.table, (cache.tables[row.table] || {}).guests)
+                    .then((session) => session && global.CLOUD.insertCall(Object.assign({}, row, { session: session })));
+            }
+            return out;
         },
         resolveCall(id, status) {
-            return write((s) => {
+            const out = write((s) => {
                 const call = s.calls.find((c) => c.id === id);
                 if (call) { call.status = status || 'done'; call.doneAt = Date.now(); }
             }, { type: 'call-done', id: id });
+
+            if (cloudOn()) global.CLOUD.resolveCall(id, status);
+            return out;
         },
 
         /* --- bills -------------------------------------------------------- */
         addBill(bill) {
-            return write((s) => {
+            const row = Object.assign({ id: uid(), at: Date.now(), status: 'requested' }, bill);
+            const out = write((s) => {
                 // One open bill per table is enough.
                 s.bills.forEach((b) => { if (b.table === bill.table && b.status === 'requested') b.status = 'replaced'; });
-                s.bills.push(Object.assign({ id: uid(), at: Date.now(), status: 'requested' }, bill));
+                s.bills.push(row);
                 pushLog(s, 'bill', bill.table, { en: 'Bill requested', ar: 'طلب فاتورة' });
             }, { type: 'bill', table: bill.table });
+
+            if (cloudOn()) {
+                sessionFor(row.table, (cache.tables[row.table] || {}).guests)
+                    .then((session) => session && global.CLOUD.insertBill(Object.assign({}, row, { session: session })));
+            }
+            return out;
         },
         settleBill(id) {
-            return write((s) => {
+            const out = write((s) => {
                 const bill = s.bills.find((b) => b.id === id);
                 if (bill) { bill.status = 'settled'; bill.settledAt = Date.now(); }
             }, { type: 'bill-done', id: id });
+
+            if (cloudOn()) global.CLOUD.settleBill(id);
+            return out;
         },
 
         /* --- live queries used by every interface ------------------------- */
@@ -452,16 +702,25 @@
         liveOrders() { return cache.orders.filter((o) => o.status === null || (o.status >= 0 && o.status < 4)); },
         tableOrders(num) { return cache.orders.filter((o) => o.table === num); },
 
-        /* --- staff presence ----------------------------------------------- */
+        /* --- staff presence -----------------------------------------------
+           Only local mode needs this: it decides whether the guest app may
+           simulate a kitchen. With a database there is nothing to fake, so
+           the answer is always "a human is in charge". */
         markStaffOnline() {
+            if (cloudOn()) return;
             const now = Date.now();
             if (now - (cache.staffSeen || 0) < 10000) return;   // heartbeat, not a flood
             write((s) => { s.staffSeen = now; }, { type: 'heartbeat' });
         },
-        staffOnline() { return Date.now() - (cache.staffSeen || 0) < STAFF_TTL; },
+        staffOnline() { return cloudOn() || Date.now() - (cache.staffSeen || 0) < STAFF_TTL; },
 
         /* --- housekeeping -------------------------------------------------- */
         resetAll() {
+            // With a database, "reset" cannot mean wiping the restaurant from
+            // a browser button: it re-reads it. db/99-clear-activity.sql is
+            // the deliberate, auditable way to erase a service day.
+            if (cloudOn()) { global.location.reload(); return; }
+
             cache = blank();
             cache.rev = Date.now();
             persist();
@@ -469,17 +728,22 @@
             fire({ type: 'reset' });
         },
         clearActivity() {
-            return write((s) => {
+            const out = write((s) => {
                 s.orders = []; s.calls = []; s.bills = []; s.log = []; s.tables = {};
             }, { type: 'reset-activity' });
+
+            // Cloud: close the floor rather than delete history.
+            if (cloudOn()) global.CLOUD.endDay();
+            return out;
         },
 
-        /** Absolute URL a table's QR code should carry. */
+        /** Absolute URL a table's QR code should carry, token included. */
         tableUrl(num) {
             const base = (cache.config.baseUrl || '').trim();
-            if (base) return base.replace(/\/?$/, '/') + 'index.html?table=' + num;
             const here = global.location.href.split('?')[0].split('#')[0];
-            return here.replace(/[^/]*$/, '') + 'index.html?table=' + num;
+            const root = base ? base.replace(/\/?$/, '/') : here.replace(/[^/]*$/, '');
+            const token = (cache.tokens || {})[num];
+            return root + 'index.html?table=' + num + (token ? '&k=' + token : '');
         }
     };
 
@@ -504,6 +768,16 @@
             openMenu: 'Guest menu',
             openStaff: 'Floor console',
             openAdmin: 'Dashboard',
+
+            /* sign in */
+            signIn: 'Sign in',
+            signInSub: 'This screen is for the restaurant team.',
+            signOut: 'Sign out',
+            email: 'E-mail',
+            password: 'Password',
+            signInFailed: 'Wrong e-mail or password',
+            notStaff: 'This account is not registered as staff',
+            offlineMode: 'Running on this device only',
             nowServing: 'Now',
             minsAgo: 'min ago',
             justNow: 'just now',
@@ -675,6 +949,16 @@
             openMenu: 'منيو العميل',
             openStaff: 'شاشة الصالة',
             openAdmin: 'لوحة التحكم',
+
+            /* تسجيل الدخول */
+            signIn: 'تسجيل الدخول',
+            signInSub: 'هذه الشاشة لطاقم المطعم.',
+            signOut: 'تسجيل الخروج',
+            email: 'الإيميل',
+            password: 'كلمة السر',
+            signInFailed: 'الإيميل أو كلمة السر غير صحيحة',
+            notStaff: 'هذا الحساب غير مسجّل كموظف',
+            offlineMode: 'يعمل على هذا الجهاز فقط',
             nowServing: 'الآن',
             minsAgo: 'دقيقة',
             justNow: 'الآن',
@@ -828,6 +1112,8 @@
     /* Overrides are applied as soon as this file loads so the page scripts,
        which run after it, only ever see the edited menu. */
     applyMenu();
-    OPS.subscribe(applyMenu);
+    if (!cloudOn()) OPS.subscribe(applyMenu);   // cloud snapshots apply it themselves
+
+    if (cloudOn()) hydrate();
 
 })(window);

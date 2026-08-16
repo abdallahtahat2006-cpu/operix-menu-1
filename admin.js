@@ -368,14 +368,27 @@
         if (file) file.addEventListener('change', () => {
             const chosen = file.files && file.files[0];
             if (!chosen) return;
-            shrink(chosen, (dataUrl) => {
-                editing.img = dataUrl;
+            pickPhoto(chosen, (url) => {
+                editing.img = url;
                 paintDishEditor();
             });
         });
     }
 
-    /** Photos go into localStorage, so they are resized before they land. */
+    /** Resize, then park the photo wherever this install keeps them: the
+        storage bucket when there is a database, the row itself otherwise. */
+    function pickPhoto(file, done) {
+        shrink(file, async (dataUrl) => {
+            if (!(window.CLOUD && CLOUD.enabled)) { done(dataUrl); return; }
+
+            CUI.toast(t('uploadImage'), 'upload');
+            const blob = await (await fetch(dataUrl)).blob();
+            const url = await CLOUD.uploadImage(blob, 'dish');
+            done(url || dataUrl);
+        });
+    }
+
+    /** Photos can end up inside localStorage, so they are resized first. */
     function shrink(file, done) {
         const reader = new FileReader();
         reader.onload = () => {
@@ -809,8 +822,8 @@
         if (heroFile) heroFile.addEventListener('change', () => {
             const chosen = heroFile.files && heroFile.files[0];
             if (!chosen) return;
-            shrink(chosen, (dataUrl) => {
-                OPS.setConfig({ brand: Object.assign({}, OPS.config().brand, { hero: dataUrl }) });
+            pickPhoto(chosen, (url) => {
+                OPS.setConfig({ brand: Object.assign({}, OPS.config().brand, { hero: url }) });
                 CUI.toast(t('saved'), 'check');
                 render();
             });
@@ -987,7 +1000,7 @@
     /* ---------------------------------------------------------------------
        Boot
        ------------------------------------------------------------------ */
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', () => CUI.requireStaff(() => OPS.ready(() => {
         hydrateIcons();
         CUI.bindChrome(render);
         $('#brandName').textContent = OPS.config().brand.name;
@@ -997,6 +1010,6 @@
         OPS.subscribe(() => {
             if (!$('#modal').classList.contains('show')) render();
         });
-    });
+    })));
 
 })();

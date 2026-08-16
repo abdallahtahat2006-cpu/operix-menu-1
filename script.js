@@ -64,7 +64,11 @@
     const L = (obj) => (obj ? (obj[state.lang] || obj.en || '') : '');
     const money = (n) => RESTAURANT.currency + (Math.round(n * 100) / 100);
     const byId = (id) => MENU.find((m) => m.id === id);
-    const uid = () => Math.random().toString(36).slice(2, 9);
+    /* Orders, calls and bills carry this id into the database, so it has to
+       be a UUID; cart line ids share the generator for simplicity. */
+    const uid = () => (window.crypto && window.crypto.randomUUID
+        ? window.crypto.randomUUID()
+        : Math.random().toString(36).slice(2, 9) + Date.now().toString(36));
 
     const esc = (str) => String(str).replace(/[&<>"']/g, (c) => (
         { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -1734,7 +1738,10 @@
         else if (page.contains('page-detail')) renderDetail();
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
+    // OPS.ready fires at once on a local install, and after the first
+    // snapshot lands when a database is behind it — so the guest never sees
+    // a menu that is about to be replaced.
+    document.addEventListener('DOMContentLoaded', () => OPS.ready(() => {
         hydrateIcons();
         applyTheme();
         injectShell();
@@ -1775,5 +1782,5 @@
 
         // First contact: ask where they are sitting.
         if (!hasTable() && !state.session.browsing) setTimeout(openTableModal, 420);
-    });
+    }));
 })();

@@ -1649,3 +1649,77 @@ select.field__input {
         display: none;
     }
 }
+
+/* =========================================================================
+   16. Staff gate + cloud boot
+   The consoles are behind a real sign-in when a database is connected, and
+   both they and the guest menu wait for the first snapshot rather than
+   painting a menu that is about to be replaced.
+   ========================================================================= */
+.gate {
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    display: grid;
+    place-items: center;
+    padding: 1.2rem;
+    background: var(--console-bg);
+    opacity: 0;
+    transition: opacity var(--t-mid) ease;
+}
+
+.gate.show {
+    opacity: 1;
+}
+
+.gate__card {
+    width: min(380px, 100%);
+    padding: 2rem 1.6rem 1.6rem;
+    border-radius: var(--r-xl);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-3);
+    text-align: center;
+}
+
+.gate__mark {
+    display: grid;
+    place-items: center;
+    width: 54px;
+    height: 54px;
+    margin: 0 auto 0.9rem;
+    border-radius: 16px;
+    font-size: 1.4rem;
+    color: var(--gold);
+    background: var(--gold-dim);
+}
+
+.gate__title {
+    font-family: var(--font-display);
+    font-size: 1.9rem;
+    font-weight: 600;
+    line-height: 1.1;
+}
+
+.gate__sub {
+    font-size: 0.85rem;
+    color: var(--text-3);
+    margin-bottom: 1.2rem;
+}
+
+.gate__card .field {
+    text-align: start;
+}
+
+.gate__card .btn {
+    margin-top: 1.2rem;
+}
+
+.gate__error {
+    margin-top: 0.9rem;
+    padding: 0.6rem 0.8rem;
+    border-radius: 12px;
+    font-size: 0.82rem;
+    color: var(--hot);
+    background: var(--hot-dim);
+}

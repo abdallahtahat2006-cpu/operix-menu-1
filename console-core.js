@@ -191,6 +191,19 @@
             });
         }
 
+        // Only a real account can be signed out of, so the button appears
+        // with the database and stays hidden on a local install.
+        const outBtn = $('#signOutBtn');
+        if (outBtn && global.CLOUD && CLOUD.enabled && CLOUD.isStaff()) {
+            outBtn.hidden = false;
+            outBtn.innerHTML = icon('logout');
+            outBtn.title = (CLOUD.staff && CLOUD.staff.full_name) || t('signOut');
+            outBtn.addEventListener('click', async () => {
+                await CLOUD.signOut();
+                location.reload();
+            });
+        }
+
         const clockEl = $('#clock');
         if (clockEl) {
             const paint = () => { clockEl.textContent = clockText(Date.now()); };
@@ -199,7 +212,79 @@
         }
     }
 
+    /* ---------------------------------------------------------------------
+       Staff gate
+       In local mode there is nobody to check against, so the consoles open
+       straight away. With a database, the floor and the dashboard are behind
+       a real sign-in: an account is not enough, it has to have a row in
+       public.staff, which is what every RLS policy actually asks about.
+       ------------------------------------------------------------------ */
+    function paintGate(then) {
+        const host = document.createElement('div');
+        host.className = 'gate';
+        host.innerHTML = `
+            <form class="gate__card" id="gateForm" autocomplete="on">
+                <div class="gate__mark">${icon('shield')}</div>
+                <h1 class="gate__title">${esc(OPS.config().brand.name)}</h1>
+                <p class="gate__sub">${esc(t('signInSub'))}</p>
+
+                <label class="field">
+                    <span class="field__label">${esc(t('email'))}</span>
+                    <input class="field__input" id="gateEmail" type="email" dir="ltr"
+                           autocomplete="username" required>
+                </label>
+                <label class="field">
+                    <span class="field__label">${esc(t('password'))}</span>
+                    <input class="field__input" id="gatePass" type="password" dir="ltr"
+                           autocomplete="current-password" required>
+                </label>
+
+                <p class="gate__error" id="gateError" hidden></p>
+
+                <button class="btn btn--gold btn--block" type="submit" id="gateGo">
+                    ${icon('logout')}<span>${esc(t('signIn'))}</span>
+                </button>
+            </form>`;
+
+        document.body.appendChild(host);
+        setTimeout(() => host.classList.add('show'), 20);
+        $('#gateEmail').focus();
+
+        $('#gateForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const button = $('#gateGo');
+            const error = $('#gateError');
+
+            button.disabled = true;
+            error.hidden = true;
+
+            const res = await CLOUD.signIn($('#gateEmail').value.trim(), $('#gatePass').value);
+
+            if (res.error) {
+                error.hidden = false;
+                error.textContent = res.error === 'not-staff' ? t('notStaff') : t('signInFailed');
+                button.disabled = false;
+                $('#gatePass').value = '';
+                return;
+            }
+
+            await OPS.reloadCloud();
+            host.classList.remove('show');
+            setTimeout(() => host.remove(), 300);
+            then();
+        });
+    }
+
+    async function requireStaff(then) {
+        if (!global.CLOUD || !CLOUD.enabled) { then(); return; }
+
+        await OPS.ready(() => {});                 // let the first snapshot land
+        if (CLOUD.isStaff()) { then(); return; }
+        paintGate(then);
+    }
+
     global.CUI = {
+        requireStaff: requireStaff,
         state: state, store: store, KEY: KEY,
         $: $, $$: $$, esc: esc, t: t, L: L, money: money,
         clockText: clockText, timeAgo: timeAgo, minutesSince: minutesSince,

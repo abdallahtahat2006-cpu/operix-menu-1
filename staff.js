@@ -738,7 +738,8 @@
     /* ---------------------------------------------------------------------
        Boot
        ------------------------------------------------------------------ */
-    document.addEventListener('DOMContentLoaded', () => {
+    // Sign in first (cloud only), then wait for the floor to load.
+    document.addEventListener('DOMContentLoaded', () => CUI.requireStaff(() => OPS.ready(() => {
         hydrateIcons();
         CUI.bindChrome(render);
 
@@ -772,6 +773,6 @@
             }
             paintBuilder();
         });
-    });
+    })));
 
 })();
